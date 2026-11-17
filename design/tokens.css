@@ -1,0 +1,91 @@
+/*
+ * Glashus design tokens for Tailwind v4.
+ * Paste into packages/ui/src/styles/globals.css, after `@import "tailwindcss";`
+ * Change --accent here and the whole app follows.
+ */
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Color */
+  --color-accent: #0F766E;
+  --color-ink: #111111;
+  --color-ink-2: #2E2E2E;
+  --color-ink-3: #4A4A4A;
+  --color-ground: #EEEFF2;
+  --color-line: rgb(17 17 17 / 0.08);
+
+  /* Radius */
+  --radius-control: 8px;
+  --radius-input: 10px;
+  --radius-card: 20px;
+  --radius-sheet: 28px;
+
+  /* Motion */
+  --ease-out-glass: cubic-bezier(.2, .8, .2, 1);
+  --ease-move: cubic-bezier(.4, 0, .2, 1);
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 260ms;
+}
+
+/* Page ground: soft grey with white light pools */
+@utility bg-glashus {
+  background-color: var(--color-ground);
+  background-image:
+    radial-gradient(900px 640px at 8% 4%, #fff, rgb(255 255 255 / 0) 60%),
+    radial-gradient(760px 560px at 94% 10%, rgb(214 218 226 / .9), rgb(214 218 226 / 0) 62%),
+    radial-gradient(820px 620px at 70% 100%, rgb(255 255 255 / .9), rgb(255 255 255 / 0) 60%),
+    radial-gradient(640px 520px at 0% 95%, rgb(222 220 216 / .8), rgb(222 220 216 / 0) 60%);
+}
+
+/* Glass surfaces */
+@utility glass {
+  background: rgb(255 255 255 / .5);
+  backdrop-filter: blur(30px) saturate(170%);
+  -webkit-backdrop-filter: blur(30px) saturate(170%);
+  border: 1px solid rgb(255 255 255 / .8);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .95), 0 10px 40px rgb(30 32 45 / .08);
+}
+@utility glass-soft {
+  background: rgb(255 255 255 / .35);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid rgb(255 255 255 / .6);
+}
+@utility glass-menu {
+  background: rgb(255 255 255 / .86);
+  backdrop-filter: blur(30px) saturate(170%);
+  -webkit-backdrop-filter: blur(30px) saturate(170%);
+  border: 1px solid rgb(255 255 255 / .9);
+  box-shadow: 0 18px 50px rgb(30 32 45 / .2), 0 2px 8px rgb(30 32 45 / .08);
+}
+/* Modal backdrop: blurred, not black */
+@utility scrim {
+  background: rgb(238 239 242 / .42);
+  backdrop-filter: blur(9px) saturate(120%);
+  -webkit-backdrop-filter: blur(9px) saturate(120%);
+}
+
+/*
+ * Button sizes (use in the shadcn Button cva):
+ *   sm: h-8  px-3 text-[13px] rounded-[8px]
+ *   md: h-10 px-4 text-[14px] rounded-[10px]   (default)
+ *   lg: h-12 px-6 text-[16px] rounded-[12px]
+ *   icon: size-8 / size-10 / size-12
+ * Variants: primary (bg-accent text-white), dark (bg-ink/90 text-white),
+ *           secondary (glass), ghost (transparent, hover bg-ink/6), danger (text-accent border-accent/35)
+ */
+
+@keyframes glass-in { from { opacity: 0; transform: translateY(8px); } }
+@keyframes glass-pop { from { opacity: 0; transform: scale(.96); } }
+@keyframes glass-rise { from { opacity: 0; transform: translateY(14px) scale(.98); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: .01ms !important;
+  }
+}

@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Glashus — Canaries</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+:root{--accent:#0F766E;--ink:#111111;--ink2:#2E2E2E;--ink3:#4A4A4A;--line:rgba(17,17,17,.08);--r8:8px;--r12:12px;--r20:20px}
+*{box-sizing:border-box}
+body{margin:0;background:#EEEFF2;font-family:Inter,system-ui,sans-serif;font-feature-settings:'tnum' 1,'cv11' 1;color:var(--ink)}
+a{color:var(--ink);text-decoration:none}a:hover{color:#000}
+button,input,select{font-family:inherit}
+.app{padding:16px;display:flex;flex-wrap:wrap;gap:16px;color:var(--ink);background-color:#EEEFF2;background-image:radial-gradient(900px 640px at 8% 4%,#fff,rgba(255,255,255,0) 60%),radial-gradient(760px 560px at 94% 10%,rgba(214,218,226,.9),rgba(214,218,226,0) 62%),radial-gradient(820px 620px at 70% 100%,rgba(255,255,255,.9),rgba(255,255,255,0) 60%),radial-gradient(640px 520px at 0% 95%,rgba(222,220,216,.8),rgba(222,220,216,0) 60%)}
+.plain{background-color:#EEEFF2;background-image:radial-gradient(900px 640px at 8% 4%,#fff,rgba(255,255,255,0) 60%),radial-gradient(760px 560px at 94% 10%,rgba(214,218,226,.9),rgba(214,218,226,0) 62%),radial-gradient(820px 620px at 70% 100%,rgba(255,255,255,.9),rgba(255,255,255,0) 60%)}
+.main{flex:999 1 560px;min-width:0;padding:16px 24px 48px;display:flex;flex-direction:column;gap:22px;position:relative}
+.glass{background:rgba(255,255,255,.5);-webkit-backdrop-filter:blur(30px) saturate(170%);backdrop-filter:blur(30px) saturate(170%);border:1px solid rgba(255,255,255,.8);box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 10px 40px rgba(30,32,45,.08)}
+.glass-soft{background:rgba(255,255,255,.35);-webkit-backdrop-filter:blur(18px) saturate(160%);backdrop-filter:blur(18px) saturate(160%);border:1px solid rgba(255,255,255,.6)}
+.card{border-radius:20px;padding:20px}.pad0{padding:8px}
+.row{display:flex;align-items:center;gap:12px}.col{display:flex;flex-direction:column;gap:12px}.wrap{flex-wrap:wrap}
+.grow{flex:1;min-width:0}.between{justify-content:space-between}.center{justify-content:center;align-items:center;text-align:center}
+.h1{margin:0;font-size:28px;font-weight:600;letter-spacing:-.03em}.h2{margin:0;font-size:17px;font-weight:600;letter-spacing:-.015em}.h3{margin:0;font-size:14px;font-weight:600}
+.muted{color:var(--ink3)}.sm{font-size:13px}.xs{font-size:12px}.b{font-weight:600}.m{font-weight:500}.p{margin:0;font-size:14px;line-height:1.5;color:var(--ink2)}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hr{height:1px;background:rgba(17,17,17,.07);border:0;margin:0}
+.trow{display:grid;gap:12px;align-items:center;padding:12px 20px;border-bottom:1px solid rgba(17,17,17,.045);font-size:14px}
+.thead{display:grid;gap:12px;padding:14px 20px;font-size:12px;color:var(--ink3);border-bottom:1px solid rgba(17,17,17,.06)}
+.sel{background:color-mix(in srgb,var(--accent) 7%,transparent)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid transparent;font-weight:500;line-height:1;white-space:nowrap;cursor:pointer;text-decoration:none;transition:background 150ms ease-out,box-shadow 150ms ease-out,transform 150ms ease-out}
+.btn:active{transform:translateY(1px)}
+.btn:focus-visible,.seg button:focus-visible,.sw:focus-visible,.input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn-sm{height:32px;padding:0 12px;font-size:13px;border-radius:8px}
+.btn-md{height:40px;padding:0 16px;font-size:14px;border-radius:10px}
+.btn-lg{height:48px;padding:0 24px;font-size:16px;border-radius:12px}
+.btn-icon{padding:0}.btn-icon.btn-sm{width:32px}.btn-icon.btn-md{width:40px}.btn-icon.btn-lg{width:48px}
+.btn-primary{background:var(--accent);color:#fff;box-shadow:0 4px 14px color-mix(in srgb,var(--accent) 30%,transparent),inset 0 1px 0 rgba(255,255,255,.25)}
+.btn-primary:hover{background:color-mix(in srgb,var(--accent) 88%,#000);color:#fff}
+.btn-dark{background:rgba(17,17,17,.9);color:#fff;border-color:rgba(255,255,255,.16);box-shadow:0 6px 20px rgba(17,17,17,.18)}
+.btn-dark:hover{background:#000;color:#fff}
+.btn-secondary{background:rgba(255,255,255,.6);color:var(--ink);border-color:rgba(255,255,255,.9);box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 1px 3px rgba(30,32,45,.08)}
+.btn-secondary:hover{background:rgba(255,255,255,.9);color:var(--ink)}
+.btn-ghost{background:transparent;color:var(--ink2)}.btn-ghost:hover{background:rgba(17,17,17,.06);color:var(--ink)}
+.btn-danger{background:transparent;color:var(--accent);border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
+.btn-danger:hover{background:color-mix(in srgb,var(--accent) 10%,transparent);color:var(--accent)}
+.chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:999px;font-size:12px;font-weight:500;border:1px solid transparent;white-space:nowrap}
+.chip-neutral{background:rgba(17,17,17,.06);color:var(--ink2);border-color:rgba(17,17,17,.08)}
+.chip-accent{background:color-mix(in srgb,var(--accent) 10%,transparent);color:var(--accent);border-color:color-mix(in srgb,var(--accent) 25%,transparent)}
+.chip-dark{background:var(--ink);color:#fff}
+.chip-clear{background:rgba(255,255,255,.6);color:var(--ink2);border-color:rgba(255,255,255,.95)}
+.dot{width:6px;height:6px;border-radius:6px;background:currentColor;flex:none}
+.ftile{position:relative;overflow:hidden;flex:none;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--ink2);background:linear-gradient(145deg,rgba(255,255,255,.9),rgba(255,255,255,.3));border:1px solid rgba(255,255,255,.9);box-shadow:0 2px 8px rgba(30,32,45,.08)}
+.ftile::after{content:"";position:absolute;inset:0;-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);opacity:0}
+.ft-1::after{opacity:.5;background:rgba(255,255,255,.55)}.ft-2::after{opacity:.8;background:color-mix(in srgb,var(--accent) 22%,transparent)}
+.navlabel{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);padding:14px 10px 4px}
+.nav{display:flex;align-items:center;gap:10px;height:36px;padding:0 10px;border-radius:10px;font-size:14px;color:var(--ink2)}
+.nav:hover{background:rgba(17,17,17,.05)}
+.nav.on{background:rgba(255,255,255,.7);color:var(--ink);font-weight:500;box-shadow:inset 0 1px 0 #fff,0 2px 8px rgba(30,32,45,.06)}
+.seg{display:inline-flex;gap:4px;padding:3px;border-radius:12px;background:rgba(255,255,255,.35);border:1px solid rgba(255,255,255,.6)}
+.seg button{height:32px;padding:0 12px;border:0;border-radius:9px;background:transparent;font-size:13px;font-weight:500;color:var(--ink2);cursor:pointer;transition:background 150ms}
+.seg button.on{background:rgba(255,255,255,.9);color:var(--ink);box-shadow:0 1px 3px rgba(30,32,45,.1)}
+.sw{position:relative;width:40px;height:24px;border-radius:24px;border:0;padding:0;background:rgba(17,17,17,.18);cursor:pointer;flex:none;transition:background 150ms}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:20px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform 150ms ease-out}
+.sw.on{background:var(--accent)}.sw.on::after{transform:translateX(16px)}
+.field{display:flex;flex-direction:column;gap:6px}
+.input{height:40px;border-radius:10px;border:1px solid rgba(17,17,17,.12);background:rgba(255,255,255,.7);padding:0 12px;font-size:14px;color:var(--ink);width:100%}
+.input::placeholder{color:#6B6B6B}
+.bar{height:6px;border-radius:6px;background:rgba(17,17,17,.08);overflow:hidden}.bar>i{display:block;height:100%;background:var(--ink)}
+.bar.acc>i{background:var(--accent)}
+.kbd{font-size:12px;color:var(--ink3);border:1px solid rgba(17,17,17,.12);border-radius:6px;padding:1px 6px;background:rgba(255,255,255,.5)}
+.tile{width:40px;height:40px;flex:none;border-radius:12px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent)}
+.tile.n{background:rgba(17,17,17,.06);color:var(--ink2)}
+.sheet{background:#fff;border-radius:6px;box-shadow:0 10px 30px rgba(30,32,45,.14);border:1px solid rgba(17,17,17,.06)}
+.line{height:8px;border-radius:4px;background:rgba(17,17,17,.1)}
+.redact{display:inline-block;height:10px;border-radius:2px;background:var(--ink);vertical-align:middle}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+
+:root{--d-fast:120ms;--d-base:180ms;--d-slow:260ms;--e-out:cubic-bezier(.2,.8,.2,1);--e-move:cubic-bezier(.4,0,.2,1)}
+@keyframes gl-in{from{opacity:0;transform:translateY(8px)}}
+@keyframes gl-pop{from{opacity:0;transform:scale(.96)}}
+@keyframes gl-fade{from{opacity:0}}
+@keyframes gl-rise{from{opacity:0;transform:translateY(14px) scale(.98)}}
+@keyframes gl-toast{from{opacity:0;transform:translate(-50%,12px)}}
+@keyframes gl-shim{from{background-position:200% 0}to{background-position:-200% 0}}
+.main>*{animation:gl-in var(--d-slow) var(--e-out) backwards}
+.main>*:nth-child(2){animation-delay:40ms}.main>*:nth-child(3){animation-delay:80ms}.main>*:nth-child(4){animation-delay:120ms}.main>*:nth-child(5){animation-delay:160ms}
+.rise{animation:gl-in var(--d-slow) var(--e-out) backwards}
+.pop{animation:gl-pop 140ms var(--e-out) backwards;transform-origin:top left}
+.modal{animation:gl-rise var(--d-slow) var(--e-out) backwards}
+.scrim{position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(238,239,242,.42);-webkit-backdrop-filter:blur(9px) saturate(120%);backdrop-filter:blur(9px) saturate(120%);animation:gl-fade 200ms ease-out backwards}
+.toast{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);z-index:40;display:flex;align-items:center;gap:16px;padding:8px 8px 8px 18px;border-radius:14px;background:rgba(17,17,17,.82);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,.14);color:#fff;font-size:14px;box-shadow:0 12px 36px rgba(17,17,17,.22);animation:gl-toast 200ms var(--e-out) backwards}
+.skel{background:linear-gradient(90deg,rgba(17,17,17,.08) 25%,rgba(17,17,17,.03) 50%,rgba(17,17,17,.08) 75%);background-size:200% 100%;animation:gl-shim 1.2s linear infinite}
+.trow{transition:background var(--d-fast) ease-out}.trow:hover{background:rgba(17,17,17,.03)}
+.nav{transition:background var(--d-fast) ease-out}
+.lift{transition:transform var(--d-base) var(--e-out),box-shadow var(--d-base) var(--e-out)}.lift:hover{transform:translateY(-2px);box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 16px 44px rgba(30,32,45,.12)}
+.menu{position:absolute;z-index:30;width:248px;padding:6px;border-radius:14px;background:rgba(255,255,255,.86);-webkit-backdrop-filter:blur(30px) saturate(170%);backdrop-filter:blur(30px) saturate(170%);border:1px solid rgba(255,255,255,.9);box-shadow:0 18px 50px rgba(30,32,45,.2),0 2px 8px rgba(30,32,45,.08)}
+.mi{display:flex;align-items:center;gap:10px;width:100%;height:36px;padding:0 10px;border:0;border-radius:8px;background:transparent;font-size:13px;font-weight:500;color:var(--ink);text-align:left;cursor:pointer;transition:background 80ms}
+.mi:hover,.mi:focus-visible{background:rgba(17,17,17,.07);outline:none;color:var(--ink)}
+.mi.dg{color:var(--accent)}.mi.dg:hover{background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.item{cursor:default;user-select:none;-webkit-user-select:none;transition:background var(--d-fast) ease-out,box-shadow var(--d-fast) ease-out,opacity var(--d-fast),transform var(--d-base) var(--e-out)}
+.item.on{background:color-mix(in srgb,var(--accent) 9%,transparent);box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--accent) 45%,transparent)}
+.item.over{background:color-mix(in srgb,var(--accent) 14%,transparent);box-shadow:inset 0 0 0 2px var(--accent)}
+.item.drag{opacity:.4}
+.gcard{display:flex;flex-direction:column;align-items:center;gap:8px;padding:18px 12px 14px;border-radius:16px;text-align:center;min-width:0}
+.gcard:hover{background:rgba(255,255,255,.55)}.gcard.on:hover{background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.lwrap{max-width:1160px;margin:0 auto;padding:0 32px}
+.lsec{padding:88px 0;border-top:1px solid rgba(17,17,17,.08)}
+.kick{font-size:13px;font-weight:600;color:var(--accent);letter-spacing:.01em}
+.lh2{margin:0;font-size:40px;line-height:1.1;font-weight:600;letter-spacing:-.03em;max-width:760px}
+.lead{margin:0;font-size:18px;line-height:1.55;color:var(--ink2);max-width:620px}
+.legal h2{margin:36px 0 10px;font-size:20px;font-weight:600;letter-spacing:-.015em}.legal p,.legal li{font-size:15px;line-height:1.7;color:var(--ink2)}.legal p{margin:0 0 12px}.legal ul{margin:0 0 12px;padding-left:20px}
+details.faq{border-top:1px solid rgba(17,17,17,.08);padding:18px 0}details.faq summary{cursor:pointer;font-size:17px;font-weight:500;list-style:none}details.faq p{margin:10px 0 0;font-size:15px;line-height:1.6;color:var(--ink2);max-width:720px}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-delay:0ms!important;transition-duration:.01ms!important}}
+</style>
+</helmet>
+<div class="app" style="min-height:900px">
+<dc-import name="Sidebar" active="canaries" hint-size="248px,868px"></dc-import>
+<main class="main">
+<dc-import name="PageHead" title="Canaries" sub="Bait files that tell you when someone is snooping" cta="New canary" ctaIcon="plus" hint-size="100%,64px"></dc-import>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px"><div class="glass card col" style="gap: 12px"><div class="row" style="gap: 12px"><div class="tile"><dc-import name="Icon" glyph="flag" size="18" hint-size="18px,18px"></dc-import></div><div class="grow col" style="gap: 2px"><span class="m">passwords-backup.xlsx</span><span class="xs muted">Bait file in /Personal</span></div><dc-import name="Chip" label="Triggered" tone="accent" hint-size="87px,24px"></dc-import></div><hr class="hr"><span class="sm muted">Opened 2 hours ago from an unknown location</span></div><div class="glass card col" style="gap: 12px"><div class="row" style="gap: 12px"><div class="tile"><dc-import name="Icon" glyph="flag" size="18" hint-size="18px,18px"></dc-import></div><div class="grow col" style="gap: 2px"><span class="m">bank-statements-2024.zip</span><span class="xs muted">Bait file in /Finance</span></div><dc-import name="Chip" label="Armed" tone="accent" hint-size="59px,24px"></dc-import></div><hr class="hr"><span class="sm muted">Never opened. Checked every request.</span></div></div><div class="col" style="gap: 12px"><h2 class="h2">Trigger history</h2><div class="glass" style="overflow-x: auto; border-radius: 20px"><div style="min-width: 680px"><div class="thead" style="grid-template-columns: 1.3fr 1.2fr 1.4fr 1fr"><span>When</span><span>Canary</span><span>Source</span><span>Result</span></div><div class="trow" style="grid-template-columns: 1.3fr 1.2fr 1.4fr 1fr"><span class="sm m">Today, 12:41</span><span class="sm">passwords-backup.xlsx</span><span class="sm muted">Unknown network · Chrome on Windows</span><dc-import name="Chip" label="Alert sent" tone="accent" icon="bell" hint-size="108px,24px"></dc-import></div><div class="trow" style="grid-template-columns: 1.3fr 1.2fr 1.4fr 1fr"><span class="sm m">Oct 18, 09:12</span><span class="sm">bank-statements-2024.zip</span><span class="sm muted">Your own account · test</span><dc-import name="Chip" label="Ignored" tone="neutral" hint-size="73px,24px"></dc-import></div></div></div></div><div class="glass card row wrap" style="gap: 12px; align-items: flex-end"><div class="col" style="gap: 6px; flex: 1 1 200px"><span class="xs b">New canary name</span><input class="input" value="client-contracts-2026.pdf" aria-label="Canary name"></div><dc-import name="Seg" options="Email|Push|Both" value="Both" hint-size="182px,38px"></dc-import><dc-import name="Button" label="Arm canary" variant="primary" size="md" icon="flag" hint-size="134px,40px"></dc-import></div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Glashus — Folder</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+:root{--accent:#0F766E;--ink:#111111;--ink2:#2E2E2E;--ink3:#4A4A4A;--line:rgba(17,17,17,.08);--r8:8px;--r12:12px;--r20:20px}
+*{box-sizing:border-box}
+body{margin:0;background:#EEEFF2;font-family:Inter,system-ui,sans-serif;font-feature-settings:'tnum' 1,'cv11' 1;color:var(--ink)}
+a{color:var(--ink);text-decoration:none}a:hover{color:#000}
+button,input,select{font-family:inherit}
+.app{padding:16px;display:flex;flex-wrap:wrap;gap:16px;color:var(--ink);background-color:#EEEFF2;background-image:radial-gradient(900px 640px at 8% 4%,#fff,rgba(255,255,255,0) 60%),radial-gradient(760px 560px at 94% 10%,rgba(214,218,226,.9),rgba(214,218,226,0) 62%),radial-gradient(820px 620px at 70% 100%,rgba(255,255,255,.9),rgba(255,255,255,0) 60%),radial-gradient(640px 520px at 0% 95%,rgba(222,220,216,.8),rgba(222,220,216,0) 60%)}
+.plain{background-color:#EEEFF2;background-image:radial-gradient(900px 640px at 8% 4%,#fff,rgba(255,255,255,0) 60%),radial-gradient(760px 560px at 94% 10%,rgba(214,218,226,.9),rgba(214,218,226,0) 62%),radial-gradient(820px 620px at 70% 100%,rgba(255,255,255,.9),rgba(255,255,255,0) 60%)}
+.main{flex:999 1 560px;min-width:0;padding:16px 24px 48px;display:flex;flex-direction:column;gap:22px;position:relative}
+.glass{background:rgba(255,255,255,.5);-webkit-backdrop-filter:blur(30px) saturate(170%);backdrop-filter:blur(30px) saturate(170%);border:1px solid rgba(255,255,255,.8);box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 10px 40px rgba(30,32,45,.08)}
+.glass-soft{background:rgba(255,255,255,.35);-webkit-backdrop-filter:blur(18px) saturate(160%);backdrop-filter:blur(18px) saturate(160%);border:1px solid rgba(255,255,255,.6)}
+.card{border-radius:20px;padding:20px}.pad0{padding:8px}
+.row{display:flex;align-items:center;gap:12px}.col{display:flex;flex-direction:column;gap:12px}.wrap{flex-wrap:wrap}
+.grow{flex:1;min-width:0}.between{justify-content:space-between}.center{justify-content:center;align-items:center;text-align:center}
+.h1{margin:0;font-size:28px;font-weight:600;letter-spacing:-.03em}.h2{margin:0;font-size:17px;font-weight:600;letter-spacing:-.015em}.h3{margin:0;font-size:14px;font-weight:600}
+.muted{color:var(--ink3)}.sm{font-size:13px}.xs{font-size:12px}.b{font-weight:600}.m{font-weight:500}.p{margin:0;font-size:14px;line-height:1.5;color:var(--ink2)}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hr{height:1px;background:rgba(17,17,17,.07);border:0;margin:0}
+.trow{display:grid;gap:12px;align-items:center;padding:12px 20px;border-bottom:1px solid rgba(17,17,17,.045);font-size:14px}
+.thead{display:grid;gap:12px;padding:14px 20px;font-size:12px;color:var(--ink3);border-bottom:1px solid rgba(17,17,17,.06)}
+.sel{background:color-mix(in srgb,var(--accent) 7%,transparent)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid transparent;font-weight:500;line-height:1;white-space:nowrap;cursor:pointer;text-decoration:none;transition:background 150ms ease-out,box-shadow 150ms ease-out,transform 150ms ease-out}
+.btn:active{transform:translateY(1px)}
+.btn:focus-visible,.seg button:focus-visible,.sw:focus-visible,.input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn-sm{height:32px;padding:0 12px;font-size:13px;border-radius:8px}
+.btn-md{height:40px;padding:0 16px;font-size:14px;border-radius:10px}
+.btn-lg{height:48px;padding:0 24px;font-size:16px;border-radius:12px}
+.btn-icon{padding:0}.btn-icon.btn-sm{width:32px}.btn-icon.btn-md{width:40px}.btn-icon.btn-lg{width:48px}
+.btn-primary{background:var(--accent);color:#fff;box-shadow:0 4px 14px color-mix(in srgb,var(--accent) 30%,transparent),inset 0 1px 0 rgba(255,255,255,.25)}
+.btn-primary:hover{background:color-mix(in srgb,var(--accent) 88%,#000);color:#fff}
+.btn-dark{background:rgba(17,17,17,.9);color:#fff;border-color:rgba(255,255,255,.16);box-shadow:0 6px 20px rgba(17,17,17,.18)}
+.btn-dark:hover{background:#000;color:#fff}
+.btn-secondary{background:rgba(255,255,255,.6);color:var(--ink);border-color:rgba(255,255,255,.9);box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 1px 3px rgba(30,32,45,.08)}
+.btn-secondary:hover{background:rgba(255,255,255,.9);color:var(--ink)}
+.btn-ghost{background:transparent;color:var(--ink2)}.btn-ghost:hover{background:rgba(17,17,17,.06);color:var(--ink)}
+.btn-danger{background:transparent;color:var(--accent);border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
+.btn-danger:hover{background:color-mix(in srgb,var(--accent) 10%,transparent);color:var(--accent)}
+.chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:999px;font-size:12px;font-weight:500;border:1px solid transparent;white-space:nowrap}
+.chip-neutral{background:rgba(17,17,17,.06);color:var(--ink2);border-color:rgba(17,17,17,.08)}
+.chip-accent{background:color-mix(in srgb,var(--accent) 10%,transparent);color:var(--accent);border-color:color-mix(in srgb,var(--accent) 25%,transparent)}
+.chip-dark{background:var(--ink);color:#fff}
+.chip-clear{background:rgba(255,255,255,.6);color:var(--ink2);border-color:rgba(255,255,255,.95)}
+.dot{width:6px;height:6px;border-radius:6px;background:currentColor;flex:none}
+.ftile{position:relative;overflow:hidden;flex:none;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--ink2);background:linear-gradient(145deg,rgba(255,255,255,.9),rgba(255,255,255,.3));border:1px solid rgba(255,255,255,.9);box-shadow:0 2px 8px rgba(30,32,45,.08)}
+.ftile::after{content:"";position:absolute;inset:0;-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);opacity:0}
+.ft-1::after{opacity:.5;background:rgba(255,255,255,.55)}.ft-2::after{opacity:.8;background:color-mix(in srgb,var(--accent) 22%,transparent)}
+.navlabel{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);padding:14px 10px 4px}
+.nav{display:flex;align-items:center;gap:10px;height:36px;padding:0 10px;border-radius:10px;font-size:14px;color:var(--ink2)}
+.nav:hover{background:rgba(17,17,17,.05)}
+.nav.on{background:rgba(255,255,255,.7);color:var(--ink);font-weight:500;box-shadow:inset 0 1px 0 #fff,0 2px 8px rgba(30,32,45,.06)}
+.seg{display:inline-flex;gap:4px;padding:3px;border-radius:12px;background:rgba(255,255,255,.35);border:1px solid rgba(255,255,255,.6)}
+.seg button{height:32px;padding:0 12px;border:0;border-radius:9px;background:transparent;font-size:13px;font-weight:500;color:var(--ink2);cursor:pointer;transition:background 150ms}
+.seg button.on{background:rgba(255,255,255,.9);color:var(--ink);box-shadow:0 1px 3px rgba(30,32,45,.1)}
+.sw{position:relative;width:40px;height:24px;border-radius:24px;border:0;padding:0;background:rgba(17,17,17,.18);cursor:pointer;flex:none;transition:background 150ms}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:20px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform 150ms ease-out}
+.sw.on{background:var(--accent)}.sw.on::after{transform:translateX(16px)}
+.field{display:flex;flex-direction:column;gap:6px}
+.input{height:40px;border-radius:10px;border:1px solid rgba(17,17,17,.12);background:rgba(255,255,255,.7);padding:0 12px;font-size:14px;color:var(--ink);width:100%}
+.input::placeholder{color:#6B6B6B}
+.bar{height:6px;border-radius:6px;background:rgba(17,17,17,.08);overflow:hidden}.bar>i{display:block;height:100%;background:var(--ink)}
+.bar.acc>i{background:var(--accent)}
+.kbd{font-size:12px;color:var(--ink3);border:1px solid rgba(17,17,17,.12);border-radius:6px;padding:1px 6px;background:rgba(255,255,255,.5)}
+.tile{width:40px;height:40px;flex:none;border-radius:12px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent)}
+.tile.n{background:rgba(17,17,17,.06);color:var(--ink2)}
+.sheet{background:#fff;border-radius:6px;box-shadow:0 10px 30px rgba(30,32,45,.14);border:1px solid rgba(17,17,17,.06)}
+.line{height:8px;border-radius:4px;background:rgba(17,17,17,.1)}
+.redact{display:inline-block;height:10px;border-radius:2px;background:var(--ink);vertical-align:middle}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+
+:root{--d-fast:120ms;--d-base:180ms;--d-slow:260ms;--e-out:cubic-bezier(.2,.8,.2,1);--e-move:cubic-bezier(.4,0,.2,1)}
+@keyframes gl-in{from{opacity:0;transform:translateY(8px)}}
+@keyframes gl-pop{from{opacity:0;transform:scale(.96)}}
+@keyframes gl-fade{from{opacity:0}}
+@keyframes gl-rise{from{opacity:0;transform:translateY(14px) scale(.98)}}
+@keyframes gl-toast{from{opacity:0;transform:translate(-50%,12px)}}
+@keyframes gl-shim{from{background-position:200% 0}to{background-position:-200% 0}}
+.main>*{animation:gl-in var(--d-slow) var(--e-out) backwards}
+.main>*:nth-child(2){animation-delay:40ms}.main>*:nth-child(3){animation-delay:80ms}.main>*:nth-child(4){animation-delay:120ms}.main>*:nth-child(5){animation-delay:160ms}
+.rise{animation:gl-in var(--d-slow) var(--e-out) backwards}
+.pop{animation:gl-pop 140ms var(--e-out) backwards;transform-origin:top left}
+.modal{animation:gl-rise var(--d-slow) var(--e-out) backwards}
+.scrim{position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(238,239,242,.42);-webkit-backdrop-filter:blur(9px) saturate(120%);backdrop-filter:blur(9px) saturate(120%);animation:gl-fade 200ms ease-out backwards}
+.toast{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);z-index:40;display:flex;align-items:center;gap:16px;padding:8px 8px 8px 18px;border-radius:14px;background:rgba(17,17,17,.82);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,.14);color:#fff;font-size:14px;box-shadow:0 12px 36px rgba(17,17,17,.22);animation:gl-toast 200ms var(--e-out) backwards}
+.skel{background:linear-gradient(90deg,rgba(17,17,17,.08) 25%,rgba(17,17,17,.03) 50%,rgba(17,17,17,.08) 75%);background-size:200% 100%;animation:gl-shim 1.2s linear infinite}
+.trow{transition:background var(--d-fast) ease-out}.trow:hover{background:rgba(17,17,17,.03)}
+.nav{transition:background var(--d-fast) ease-out}
+.lift{transition:transform var(--d-base) var(--e-out),box-shadow var(--d-base) var(--e-out)}.lift:hover{transform:translateY(-2px);box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 16px 44px rgba(30,32,45,.12)}
+.menu{position:absolute;z-index:30;width:248px;padding:6px;border-radius:14px;background:rgba(255,255,255,.86);-webkit-backdrop-filter:blur(30px) saturate(170%);backdrop-filter:blur(30px) saturate(170%);border:1px solid rgba(255,255,255,.9);box-shadow:0 18px 50px rgba(30,32,45,.2),0 2px 8px rgba(30,32,45,.08)}
+.mi{display:flex;align-items:center;gap:10px;width:100%;height:36px;padding:0 10px;border:0;border-radius:8px;background:transparent;font-size:13px;font-weight:500;color:var(--ink);text-align:left;cursor:pointer;transition:background 80ms}
+.mi:hover,.mi:focus-visible{background:rgba(17,17,17,.07);outline:none;color:var(--ink)}
+.mi.dg{color:var(--accent)}.mi.dg:hover{background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.item{cursor:default;user-select:none;-webkit-user-select:none;transition:background var(--d-fast) ease-out,box-shadow var(--d-fast) ease-out,opacity var(--d-fast),transform var(--d-base) var(--e-out)}
+.item.on{background:color-mix(in srgb,var(--accent) 9%,transparent);box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--accent) 45%,transparent)}
+.item.over{background:color-mix(in srgb,var(--accent) 14%,transparent);box-shadow:inset 0 0 0 2px var(--accent)}
+.item.drag{opacity:.4}
+.gcard{display:flex;flex-direction:column;align-items:center;gap:8px;padding:18px 12px 14px;border-radius:16px;text-align:center;min-width:0}
+.gcard:hover{background:rgba(255,255,255,.55)}.gcard.on:hover{background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.lwrap{max-width:1160px;margin:0 auto;padding:0 32px}
+.lsec{padding:88px 0;border-top:1px solid rgba(17,17,17,.08)}
+.kick{font-size:13px;font-weight:600;color:var(--accent);letter-spacing:.01em}
+.lh2{margin:0;font-size:40px;line-height:1.1;font-weight:600;letter-spacing:-.03em;max-width:760px}
+.lead{margin:0;font-size:18px;line-height:1.55;color:var(--ink2);max-width:620px}
+.legal h2{margin:36px 0 10px;font-size:20px;font-weight:600;letter-spacing:-.015em}.legal p,.legal li{font-size:15px;line-height:1.7;color:var(--ink2)}.legal p{margin:0 0 12px}.legal ul{margin:0 0 12px;padding-left:20px}
+details.faq{border-top:1px solid rgba(17,17,17,.08);padding:18px 0}details.faq summary{cursor:pointer;font-size:17px;font-weight:500;list-style:none}details.faq p{margin:10px 0 0;font-size:15px;line-height:1.6;color:var(--ink2);max-width:720px}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-delay:0ms!important;transition-duration:.01ms!important}}
+</style>
+</helmet>
+<div class="app" tabindex="0" onKeyDown="{{key}}" onContextMenu="{{bgCtx}}" onClick="{{bgClick}}" onDragOver="{{rootOver}}" onDragLeave="{{rootLeave}}" onDrop="{{rootDrop}}" style="min-height: 900px; position: relative; outline: none">
+<dc-import name="Sidebar" active="drive" hint-size="248px,868px"></dc-import>
+<main class="main">
+<dc-import name="PageHead" title="Thesis" sub="Projects / Thesis" cta="Upload" ctaIcon="upload" hint-size="100%,64px"></dc-import>
+<div class="row wrap between"><nav class="row sm" style="gap: 6px" aria-label="Breadcrumb"><a href="Main.dc.html" class="muted">Drive</a><dc-import name="Icon" glyph="chevR" size="14" hint-size="14px,14px"></dc-import><a href="#" class="muted">Projects</a><dc-import name="Icon" glyph="chevR" size="14" hint-size="14px,14px"></dc-import><span class="m">Thesis</span></nav><div class="row" style="gap: 10px"><span class="xs muted">Right-click a file · drag onto a folder · press <span class="kbd">?</span></span>
+<div class="seg" role="group" aria-label="View"><button type="button" class="{{listCls}}" onClick="{{setList}}" aria-label="List view" style="display: flex; align-items: center; gap: 6px"><dc-import name="Icon" glyph="list" size="14" hint-size="14px,14px"></dc-import> List</button><button type="button" class="{{gridCls}}" onClick="{{setGrid}}" aria-label="Grid view" style="display: flex; align-items: center; gap: 6px"><dc-import name="Icon" glyph="grid" size="14" hint-size="14px,14px"></dc-import> Grid</button></div>
+<dc-import name="Button" label="New folder" variant="secondary" size="md" icon="plus" onClick="{{newFolder}}" hint-size="130px,40px"></dc-import></div></div>
+<sc-if value="{{isList}}" hint-placeholder-val="{{ true }}"><div class="glass" style="overflow-x: auto; border-radius: 20px"><div style="min-width: 720px">
+<div class="thead" style="grid-template-columns: 2.6fr 1.2fr 1fr 0.8fr 40px"><span>Name</span><span>Visibility</span><span>Modified</span><span>Size</span><span></span></div>
+<sc-for list="{{items}}" as="it" hint-placeholder-count="8"><div class="{{it.rowCls}}" draggable="true" style="grid-template-columns: 2.6fr 1.2fr 1fr 0.8fr 40px" onClick="{{it.click}}" onContextMenu="{{it.ctx}}" onDragStart="{{it.ds}}" onDragEnd="{{it.de}}" onDragOver="{{it.dov}}" onDragLeave="{{it.dlv}}" onDrop="{{it.drp}}">
+<div class="row" style="min-width: 0"><dc-import name="FileTile" ext="{{it.ext}}" tone="{{it.tone}}" size="36" hint-size="36px,36px"></dc-import><div class="col" style="gap: 1px; min-width: 0"><span class="ell m">{{it.name}}</span><span class="xs muted ell">{{it.sub}}</span></div></div>
+<div><dc-import name="Chip" label="{{it.vis}}" tone="{{it.visTone}}" hint-size="80px,24px"></dc-import></div><span class="sm muted">{{it.mod}}</span><span class="sm muted">{{it.size}}</span>
+<button type="button" class="btn btn-sm btn-ghost btn-icon" aria-label="More actions" onClick="{{it.more}}"><dc-import name="Icon" glyph="more" size="14" hint-size="14px,14px"></dc-import></button></div></sc-for>
+</div></div></sc-if>
+<sc-if value="{{isGrid}}" hint-placeholder-val="{{ false }}"><div class="glass" style="border-radius: 20px; padding: 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 8px">
+<sc-for list="{{items}}" as="it" hint-placeholder-count="8"><div class="{{it.cardCls}}" draggable="true" onClick="{{it.click}}" onContextMenu="{{it.ctx}}" onDragStart="{{it.ds}}" onDragEnd="{{it.de}}" onDragOver="{{it.dov}}" onDragLeave="{{it.dlv}}" onDrop="{{it.drp}}"><dc-import name="FileTile" ext="{{it.ext}}" tone="{{it.tone}}" size="64" hint-size="64px,64px"></dc-import><span class="sm m ell" style="max-width: 100%">{{it.name}}</span><span class="xs muted ell" style="max-width: 100%">{{it.sub}}</span><dc-import name="Chip" label="{{it.vis}}" tone="{{it.visTone}}" hint-size="80px,24px"></dc-import></div></sc-for>
+</div></sc-if>
+<sc-if value="{{isEmpty}}" hint-placeholder-val="{{ false }}"><div class="col center muted" style="padding: 40px">This folder is empty. Drop files here.</div></sc-if>
+<sc-if value="{{hasSel}}" hint-placeholder-val="{{ false }}"><div class="glass row pop" style="position: sticky; bottom: 16px; align-self: center; gap: 10px; padding: 8px 8px 8px 18px; border-radius: 14px; transform-origin: bottom center"><span class="sm m">{{selLabel}}</span>
+<dc-import name="Button" label="Share" variant="primary" size="sm" icon="share" onClick="{{openShare}}" hint-size="80px,32px"></dc-import><dc-import name="Button" label="Download" variant="secondary" size="sm" icon="download" onClick="{{download}}" hint-size="100px,32px"></dc-import><dc-import name="Button" label="Move to trash" variant="danger" size="sm" icon="trash" onClick="{{trash}}" hint-size="120px,32px"></dc-import></div></sc-if>
+</main>
+<sc-if value="{{menuOpen}}" hint-placeholder-val="{{ false }}"><div class="menu pop" role="menu" style="left: {{mx}}px; top: {{my}}px"><sc-for list="{{menuItems}}" as="mi" hint-placeholder-count="6"><sc-if value="{{mi.sep}}" hint-placeholder-val="{{ false }}"><hr class="hr" style="margin: 4px 6px"></sc-if><sc-if value="{{mi.isLink}}" hint-placeholder-val="{{ false }}"><a class="mi" role="menuitem" href="{{mi.href}}"><dc-import name="Icon" glyph="{{mi.icon}}" size="16" hint-size="16px,16px"></dc-import><span class="grow">{{mi.label}}</span><sc-if value="{{mi.kbd}}" hint-placeholder-val="{{ false }}"><span class="kbd">{{mi.kbd}}</span></sc-if></a></sc-if><sc-if value="{{mi.isBtn}}" hint-placeholder-val="{{ true }}"><button type="button" class="{{mi.cls}}" role="menuitem" onClick="{{mi.run}}"><dc-import name="Icon" glyph="{{mi.icon}}" size="16" hint-size="16px,16px"></dc-import><span class="grow">{{mi.label}}</span><sc-if value="{{mi.kbd}}" hint-placeholder-val="{{ false }}"><span class="kbd">{{mi.kbd}}</span></sc-if></button></sc-if></sc-for></div></sc-if>
+<sc-if value="{{shareOpen}}" hint-placeholder-val="{{ false }}"><div class="scrim" onClick="{{closeAll}}"><div class="glass modal col" role="dialog" aria-label="Share" onClick="{{stop}}" style="width: 480px; max-width: 100%; border-radius: 24px; padding: 24px; gap: 18px; background: rgba(255,255,255,0.78)">
+<div class="row between"><div class="col" style="gap: 2px; min-width: 0"><h2 class="h2 ell">Share {{shareName}}</h2><span class="sm muted">Checked before the link exists</span></div><dc-import name="Button" label="Close" variant="ghost" size="md" icon="x" icon-only="true" onClick="{{closeAll}}" hint-size="40px,40px"></dc-import></div>
+<sc-if value="{{shareFlag}}" hint-placeholder-val="{{ false }}"><div class="glass-soft row" style="border-radius: 14px; padding: 12px 14px; gap: 10px"><span class="tile" style="width: 28px; height: 28px; border-radius: 8px"><dc-import name="Icon" glyph="warn" size="16" hint-size="16px,16px"></dc-import></span><span class="sm"><span class="b">Email addresses found.</span> A redacted copy will be shared.</span></div></sc-if>
+<div class="col" style="gap: 8px"><span class="sm b">Link expires</span><dc-import name="Seg" options="1 day|7 days|30 days|Never" value="7 days" hint-size="288px,38px"></dc-import></div><dc-import name="Switch" label="Require a PIN" sub="Recipient enters 4 digits to open" on="true" hint-size="100%,48px"></dc-import>
+<div class="row between"><a href="Share.dc.html" class="sm muted">More options</a><div class="row" style="gap: 8px"><dc-import name="Button" label="Cancel" variant="ghost" size="md" onClick="{{closeAll}}" hint-size="80px,40px"></dc-import><dc-import name="Button" label="Create link" variant="primary" size="md" icon="link" onClick="{{createLink}}" hint-size="130px,40px"></dc-import></div></div></div></div></sc-if>
+<sc-if value="{{keysOpen}}" hint-placeholder-val="{{ false }}"><div class="scrim" onClick="{{closeAll}}"><div class="glass modal col" role="dialog" aria-label="Keyboard shortcuts" onClick="{{stop}}" style="width: 520px; max-width: 100%; border-radius: 24px; padding: 24px; gap: 14px; background: rgba(255,255,255,0.78)"><div class="row between"><h2 class="h2">Keyboard shortcuts</h2><span class="kbd">esc</span></div>
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px 28px"><sc-for list="{{keyRows}}" as="k" hint-placeholder-count="8"><div class="row between sm"><span>{{k.label}}</span><span class="kbd">{{k.key}}</span></div></sc-for></div></div></div></sc-if>
+<sc-if value="{{extOpen}}" hint-placeholder-val="{{ false }}"><div style="position: absolute; inset: 12px; z-index: 25; pointer-events: none; border-radius: 24px; border: 2px dashed var(--accent); background: rgba(238,239,242,0.55); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; animation: gl-fade 160ms ease-out backwards"><div class="tile" style="width: 56px; height: 56px; border-radius: 16px"><dc-import name="Icon" glyph="upload" size="24" hint-size="24px,24px"></dc-import></div><span class="h2">Drop to upload to Thesis</span><span class="sm muted">Files go to quarantine and are scanned first.</span></div></sc-if>
+<sc-if value="{{toastOpen}}" hint-placeholder-val="{{ false }}"><div role="status" class="toast"><span>{{toastMsg}}</span><sc-if value="{{canUndo}}" hint-placeholder-val="{{ false }}"><dc-import name="Button" label="Undo" variant="secondary" size="sm" onClick="{{undo}}" hint-size="70px,32px"></dc-import></sc-if><sc-if value="{{noUndo}}" hint-placeholder-val="{{ false }}"><span style="width: 8px"></span></sc-if></div></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { view: 'list', sel: [], menu: null, share: false, keys: false, drag: null, over: null, ext: false, moved: {}, trashed: [], added: 0, toast: null };
+    this.timer = null; this.undoFn = null;
+  }
+  componentWillUnmount() { clearTimeout(this.timer); }
+  base() {
+    return [
+      { id: 'notes', name: 'Research notes', folder: true, count: 12, ext: 'DIR', tone: 0, vis: 'Private', visTone: 'clear', mod: 'Nov 12' },
+      { id: 'sources', name: 'Sources', folder: true, count: 8, ext: 'DIR', tone: 1, vis: 'Shared', visTone: 'neutral', mod: 'Oct 30' },
+      { id: 'draft', name: 'thesis-draft-v4.docx', ext: 'DOC', tone: 0, vis: 'Private', visTone: 'clear', mod: 'Nov 12', size: '640 KB' },
+      { id: 'fig', name: 'figure-3-results.png', ext: 'PNG', tone: 1, vis: 'Shared', visTone: 'neutral', mod: 'Nov 11', size: '412 KB' },
+      { id: 'survey', name: 'survey-data.csv', ext: 'CSV', tone: 2, vis: 'Public', visTone: 'accent', mod: 'Nov 4', size: '82 KB', flag: 'Email addresses found' },
+      { id: 'refs', name: 'references.pdf', ext: 'PDF', tone: 0, vis: 'Private', visTone: 'clear', mod: 'Oct 21', size: '2.4 MB' },
+      { id: 'slides', name: 'defense-slides.pdf', ext: 'PDF', tone: 0, vis: 'Private', visTone: 'clear', mod: 'Oct 15', size: '6.1 MB' },
+      { id: 'audio', name: 'interview-01.m4a', ext: 'M4A', tone: 0, vis: 'Private', visTone: 'clear', mod: 'Oct 8', size: '18 MB' }
+    ];
+  }
+  all() {
+    const a = this.base();
+    for (let i = 0; i < this.state.added; i++) a.splice(2 + i, 0, { id: 'new' + i, name: i ? 'Untitled folder ' + (i + 1) : 'Untitled folder', folder: true, count: 0, ext: 'DIR', tone: 0, vis: 'Private', visTone: 'clear', mod: 'Just now' });
+    return a;
+  }
+  visible() { const s = this.state; return this.all().filter((x) => !s.moved[x.id] && s.trashed.indexOf(x.id) < 0); }
+  say(msg, undo) {
+    clearTimeout(this.timer); this.undoFn = undo || null;
+    this.setState({ toast: msg });
+    this.timer = setTimeout(() => this.setState({ toast: null }), 5000);
+  }
+  at(e) {
+    const root = e.currentTarget.closest('.app'); const r = root.getBoundingClientRect(); const k = (r.width / root.offsetWidth) || 1;
+    return { x: Math.round(Math.max(8, Math.min((e.clientX - r.left) / k, root.offsetWidth - 264))), y: Math.round(Math.max(8, Math.min((e.clientY - r.top) / k, root.offsetHeight - 340))) };
+  }
+  trash() {
+    const ids = this.state.sel, prev = this.state.trashed; if (!ids.length) return;
+    this.setState({ trashed: prev.concat(ids), sel: [], menu: null });
+    this.say(ids.length + (ids.length === 1 ? ' item' : ' items') + ' moved to trash', () => this.setState({ trashed: prev, toast: null }));
+  }
+  moveTo(target) {
+    const s = this.state; const src = s.sel.indexOf(s.drag) >= 0 ? s.sel : [s.drag];
+    const ids = src.filter((id) => id && id !== target); if (!ids.length) return;
+    const prev = s.moved; const next = Object.assign({}, prev); ids.forEach((id) => { next[id] = target; });
+    const t = this.all().filter((x) => x.id === target)[0];
+    this.setState({ moved: next, sel: [], drag: null, over: null });
+    this.say('Moved ' + ids.length + (ids.length === 1 ? ' item' : ' items') + ' to ' + t.name, () => this.setState({ moved: prev, toast: null }));
+  }
+  key(e) {
+    const t = e.target; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+    const s = this.state, k = e.key;
+    if (k === 'Escape') { if (s.menu || s.share || s.keys) this.setState({ menu: null, share: false, keys: false }); else this.setState({ sel: [] }); return; }
+    if (k === '?') { this.setState({ keys: !s.keys, menu: null }); return; }
+    if (s.share || s.keys) return;
+    if ((e.metaKey || e.ctrlKey) && k.toLowerCase() === 'a') { e.preventDefault(); this.setState({ sel: this.visible().map((x) => x.id) }); return; }
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (k === 'v' || k === 'V') { this.setState({ view: s.view === 'list' ? 'grid' : 'list' }); return; }
+    if ((k === 's' || k === 'S') && s.sel.length) { this.setState({ share: true, menu: null }); return; }
+    if (k === 'n' || k === 'N') { this.setState({ added: s.added + 1 }); return; }
+    if ((k === 'Delete' || k === 'Backspace') && s.sel.length) { e.preventDefault(); this.trash(); return; }
+    if (k === 'ArrowDown' || k === 'ArrowUp' || k === 'ArrowRight' || k === 'ArrowLeft') {
+      e.preventDefault(); const ids = this.visible().map((x) => x.id); if (!ids.length) return;
+      const cur = ids.indexOf(s.sel[s.sel.length - 1]); const d = (k === 'ArrowDown' || k === 'ArrowRight') ? 1 : -1;
+      const n = cur < 0 ? 0 : Math.max(0, Math.min(ids.length - 1, cur + d));
+      this.setState({ sel: e.shiftKey ? s.sel.filter((x) => x !== ids[n]).concat([ids[n]]) : [ids[n]] });
+    }
+  }
+  renderVals() {
+    const self = this, s = this.state; const vis = this.visible();
+    const inCount = {}; Object.keys(s.moved).forEach((id) => { if (s.trashed.indexOf(id) < 0) inCount[s.moved[id]] = (inCount[s.moved[id]] || 0) + 1; });
+    const items = vis.map((x) => {
+      const on = s.sel.indexOf(x.id) >= 0;
+      const cls = ' item' + (on ? ' on' : '') + (s.over === x.id ? ' over' : '') + (s.drag && (s.drag === x.id || (on && s.sel.indexOf(s.drag) >= 0)) ? ' drag' : '');
+      const n = (x.count || 0) + (inCount[x.id] || 0);
+      return {
+        name: x.name, ext: x.ext, tone: x.tone, vis: x.vis, visTone: x.visTone, mod: x.mod, size: x.folder ? '—' : x.size,
+        sub: x.folder ? n + (n === 1 ? ' item' : ' items') : (x.flag || x.size),
+        rowCls: 'trow' + cls, cardCls: 'gcard' + cls,
+        click: (e) => { e.stopPropagation(); const multi = e.metaKey || e.ctrlKey || e.shiftKey; self.setState({ menu: null, sel: multi ? (on ? s.sel.filter((i) => i !== x.id) : s.sel.concat([x.id])) : [x.id] }); },
+        ctx: (e) => { if (e.shiftKey) { e.stopPropagation(); return; } e.preventDefault(); e.stopPropagation(); const p = self.at(e); self.setState({ sel: on ? s.sel : [x.id], menu: { x: p.x, y: p.y, kind: 'item' } }); },
+        more: (e) => { e.stopPropagation(); const p = self.at(e); self.setState({ sel: [x.id], menu: { x: p.x - 220, y: p.y + 12, kind: 'item' } }); },
+        ds: (e) => { try { e.dataTransfer.setData('text/plain', x.id); e.dataTransfer.effectAllowed = 'move'; } catch (err) {} setTimeout(() => self.setState({ drag: x.id, menu: null }), 0); },
+        de: () => self.setState({ drag: null, over: null }),
+        dov: (e) => { if (x.folder && self.state.drag && self.state.drag !== x.id && self.state.sel.indexOf(x.id) < 0) { e.preventDefault(); e.stopPropagation(); if (self.state.over !== x.id) self.setState({ over: x.id }); } },
+        dlv: () => { if (self.state.over === x.id) self.setState({ over: null }); },
+        drp: (e) => { if (x.folder && self.state.drag) { e.preventDefault(); e.stopPropagation(); self.moveTo(x.id); } }
+      };
+    });
+    const selItems = vis.filter((x) => s.sel.indexOf(x.id) >= 0);
+    const B = (label, icon, run, kbd, extra) => Object.assign({ label: label, icon: icon, run: run, kbd: kbd || '', isBtn: true, isLink: false, sep: false, cls: 'mi' }, extra || {});
+    const openShare = () => self.setState({ share: true, menu: null });
+    const toggleView = () => self.setState({ view: s.view === 'list' ? 'grid' : 'list', menu: null });
+    const selectAll = () => self.setState({ sel: vis.map((x) => x.id), menu: null });
+    const menuItems = !s.menu ? [] : s.menu.kind === 'item' ? [
+      { label: 'Open', icon: 'eye', href: 'Viewer.dc.html', kbd: '↵', isLink: true, isBtn: false, sep: false },
+      B('Share…', 'share', openShare, 'S'),
+      B('Copy link', 'link', () => { self.setState({ menu: null }); self.say('Link copied'); }),
+      B('Download', 'download', () => { self.setState({ menu: null }); self.say('Download started'); }, '', { sep: true }),
+      { label: 'Scan report', icon: 'shield', href: 'Scan.dc.html', kbd: '', isLink: true, isBtn: false, sep: false },
+      B('Move to trash', 'trash', () => self.trash(), '⌫', { sep: true, cls: 'mi dg' })
+    ] : [
+      B('New folder', 'folder', () => self.setState({ added: s.added + 1, menu: null }), 'N'),
+      { label: 'Upload files', icon: 'upload', href: 'Upload.dc.html', kbd: '', isLink: true, isBtn: false, sep: false },
+      B(s.view === 'list' ? 'View as grid' : 'View as list', s.view === 'list' ? 'grid' : 'list', toggleView, 'V', { sep: true }),
+      B('Select all', 'check', selectAll, '⌘A'),
+      B('Keyboard shortcuts', 'info', () => self.setState({ keys: true, menu: null }), '?', { sep: true })
+    ];
+    return {
+      items: items, isList: s.view === 'list', isGrid: s.view === 'grid', isEmpty: vis.length === 0,
+      listCls: s.view === 'list' ? 'on' : '', gridCls: s.view === 'grid' ? 'on' : '',
+      setList: (e) => { e.stopPropagation(); self.setState({ view: 'list' }); }, setGrid: (e) => { e.stopPropagation(); self.setState({ view: 'grid' }); },
+      newFolder: () => self.setState({ added: s.added + 1 }),
+      hasSel: selItems.length > 0, selLabel: selItems.length + ' selected',
+      openShare: openShare, trash: () => self.trash(), download: () => self.say('Download started'),
+      menuOpen: !!s.menu, mx: s.menu ? s.menu.x : 0, my: s.menu ? s.menu.y : 0, menuItems: menuItems,
+      shareOpen: s.share && selItems.length > 0, shareName: selItems.length === 1 ? selItems[0].name : selItems.length + ' items', shareFlag: selItems.some((x) => !!x.flag),
+      createLink: () => { self.setState({ share: false }); self.say('Link created. Ends in 7 days.', () => self.setState({ toast: null })); },
+      keysOpen: s.keys,
+      keyRows: [['Move selection', '↑ ↓'], ['Extend selection', '⇧ ↑ ↓'], ['Select all', '⌘A'], ['Share', 'S'], ['Move to trash', '⌫'], ['New folder', 'N'], ['List or grid', 'V'], ['Search and commands', '⌘K'], ['This sheet', '?'], ['Close or clear', 'esc']].map((r) => ({ label: r[0], key: r[1] })),
+      extOpen: s.ext, toastOpen: !!s.toast, toastMsg: s.toast || '', canUndo: !!s.toast && !!this.undoFn, noUndo: !!s.toast && !this.undoFn,
+      undo: () => { if (self.undoFn) self.undoFn(); },
+      stop: (e) => e.stopPropagation(), closeAll: () => self.setState({ menu: null, share: false, keys: false }),
+      key: (e) => self.key(e),
+      bgClick: (e) => { const c = e.target.classList; const bg = c && (c.contains('main') || c.contains('app')); if (self.state.menu || bg) self.setState({ menu: null, sel: bg ? [] : self.state.sel }); },
+      bgCtx: (e) => { if (e.shiftKey) return; e.preventDefault(); const p = self.at(e); self.setState({ menu: { x: p.x, y: p.y, kind: 'bg' } }); },
+      rootOver: (e) => { const t = e.dataTransfer && e.dataTransfer.types; if (t && Array.prototype.indexOf.call(t, 'Files') >= 0) { e.preventDefault(); if (!self.state.ext) self.setState({ ext: true }); } },
+      rootLeave: (e) => { if (self.state.ext && !e.currentTarget.contains(e.relatedTarget)) self.setState({ ext: false }); },
+      rootDrop: (e) => { if (self.state.ext) { e.preventDefault(); const n = (e.dataTransfer.files && e.dataTransfer.files.length) || 1; self.setState({ ext: false }); self.say(n + (n === 1 ? ' file' : ' files') + ' sent to quarantine for scanning'); } }
+    };
+  }
+}
+</script>
+</body>
+</html>
