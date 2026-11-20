@@ -663,6 +663,21 @@ export function registerDriveRoutes(app: ApiApp): void {
       })
     }
 
+    // Signed URLs don't bind size: enforce declared size and quota here.
+    const declaredSize = Number(fileData.size ?? 0)
+    const userSnap = await db.collection("users").doc(uid).get()
+    const bytesUsed = Number(userSnap.data()?.bytesUsed ?? 0)
+    if (
+      inspected.size > declaredSize ||
+      bytesUsed + inspected.size > FREE_STORAGE_QUOTA_BYTES
+    ) {
+      await deleteQuarantineObject(uid, id)
+      await fileRef.delete()
+      throw new HTTPException(400, {
+        message: "Uploaded size exceeds the declared size or storage quota.",
+      })
+    }
+
     const scanResult = scanBuffer(filename, mime, inspected.sample)
     const now = new Date().toISOString()
 
@@ -898,9 +913,7 @@ export function registerDriveRoutes(app: ApiApp): void {
     }
 
     const isInline = inline === "true"
-    if (!isInline) {
-      await incrementMonthlyDownloadBytes(db, uid, file.size)
-    }
+    await incrementMonthlyDownloadBytes(db, uid, file.size)
 
     const downloadUrl = await createDownloadSignedUrl(
       getCleanPath(uid, id),

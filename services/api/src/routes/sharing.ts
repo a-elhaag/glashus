@@ -22,7 +22,7 @@ import {
   verifyPin,
   writeAuditEvent,
 } from "../core/audit.js"
-import { getAdminDb } from "../core/firebase.js"
+import { getAdminAuth, getAdminDb } from "../core/firebase.js"
 import { isTextInspectable, maskAndRedactText } from "../core/scanner.js"
 import { toFileRecord, toShareRecord } from "../core/serializers.js"
 import {
@@ -194,6 +194,20 @@ async function recomputeFileExposure(uid: string, fileId: string): Promise<void>
     .set({ exposure, updatedAt: new Date().toISOString() }, { merge: true })
 }
 
+const MAX_PIN_ATTEMPTS = 5
+
+async function verifiedCallerEmail(
+  authHeader: string | undefined
+): Promise<string | null> {
+  if (!authHeader?.startsWith("Bearer ")) return null
+  try {
+    const d = await getAdminAuth().verifyIdToken(authHeader.slice(7).trim())
+    return d.email && d.email_verified ? d.email.toLowerCase() : null
+  } catch {
+    return null
+  }
+}
+
 export function registerSharingRoutes(app: ApiApp): void {
   app.openapi(listSharesRoute, async (c) => {
     const uid = c.get("uid")
@@ -235,10 +249,14 @@ export function registerSharingRoutes(app: ApiApp): void {
     }
 
     if (body.redacted && !file.hasRedactedCopy) {
+      if (!isTextInspectable(file.name, file.mime)) {
+        throw new HTTPException(400, {
+          message:
+            "Redacted copies are only supported for text files. Share is blocked for this format.",
+        })
+      }
       const { sample, contentType } = await readCleanSample(uid, file.id)
-      const payload = isTextInspectable(file.name, file.mime)
-        ? maskAndRedactText(sample.toString("utf8")).redactedText
-        : sample
+      const payload = maskAndRedactText(sample.toString("utf8")).redactedText
       await writeRedactedToClean(uid, file.id, payload, contentType)
       await fileRef.set({ hasRedactedCopy: true }, { merge: true })
     }
@@ -421,33 +439,67 @@ export function registerSharingRoutes(app: ApiApp): void {
       throw new HTTPException(404, { message: "Share link not found." })
     }
 
-    const raw = snap.data()!
-    const share = toShareRecord(snap.id, raw)
+    const share = toShareRecord(snap.id, snap.data()!)
 
-    if (share.revokedAt !== null) {
-      throw new HTTPException(403, { message: "This share link was revoked." })
-    }
-    if (share.expiresAt && new Date(share.expiresAt).getTime() <= Date.now()) {
-      throw new HTTPException(403, { message: "This share link has expired." })
-    }
-    if (share.maxDownloads !== null && share.downloads >= share.maxDownloads) {
-      throw new HTTPException(403, {
-        message: "Download limit reached for this share link.",
-      })
-    }
-    if (share.hasPin) {
-      const storedHash =
-        typeof raw.pinHash === "string" ? raw.pinHash : ""
-      if (!pin || !verifyPin(pin, storedHash)) {
-        throw new HTTPException(403, { message: "Incorrect PIN." })
+    if (share.audience === "specific_people") {
+      const email = await verifiedCallerEmail(c.req.header("authorization"))
+      if (!email || email !== share.recipientEmail?.toLowerCase()) {
+        throw new HTTPException(403, {
+          message: "Sign in with the invited email to open this share.",
+        })
       }
     }
 
-    await incrementMonthlyDownloadBytes(db, share.ownerUid, share.fileSize)
-    await shareRef.set(
-      { downloads: FieldValue.increment(1) },
-      { merge: true }
-    )
+    // One transaction: checks, PIN attempt counter and download increment.
+    const outcome = await db.runTransaction(async (tx) => {
+      const cur = await tx.get(shareRef)
+      const d = cur.data()
+      if (!d) return "missing" as const
+      const r = toShareRecord(cur.id, d)
+      if (r.revokedAt !== null) return "revoked" as const
+      if (r.expiresAt && new Date(r.expiresAt).getTime() <= Date.now()) {
+        return "expired" as const
+      }
+      if (r.maxDownloads !== null && r.downloads >= r.maxDownloads) {
+        return "limit" as const
+      }
+      if (Number(d.failedAttempts ?? 0) >= MAX_PIN_ATTEMPTS) {
+        return "locked" as const
+      }
+      if (r.hasPin) {
+        const storedHash = typeof d.pinHash === "string" ? d.pinHash : ""
+        if (!pin || !verifyPin(pin, storedHash)) {
+          tx.update(shareRef, { failedAttempts: FieldValue.increment(1) })
+          return "badpin" as const
+        }
+      }
+      tx.update(shareRef, {
+        downloads: FieldValue.increment(1),
+        failedAttempts: 0,
+      })
+      return { downloadsBefore: r.downloads }
+    })
+
+    if (typeof outcome === "string") {
+      const messages = {
+        missing: "Share link not found.",
+        revoked: "This share link was revoked.",
+        expired: "This share link has expired.",
+        limit: "Download limit reached for this share link.",
+        locked: "Too many wrong PINs. This share link is locked.",
+        badpin: "Incorrect PIN.",
+      } as const
+      throw new HTTPException(outcome === "missing" ? 404 : 403, {
+        message: messages[outcome],
+      })
+    }
+
+    try {
+      await incrementMonthlyDownloadBytes(db, share.ownerUid, share.fileSize)
+    } catch (err) {
+      await shareRef.update({ downloads: FieldValue.increment(-1) })
+      throw err
+    }
 
     const objectPath = share.redacted
       ? getRedactedPath(share.ownerUid, share.fileId)
@@ -469,7 +521,7 @@ export function registerSharingRoutes(app: ApiApp): void {
 
     const downloadsRemaining =
       share.maxDownloads !== null
-        ? Math.max(0, share.maxDownloads - (share.downloads + 1))
+        ? Math.max(0, share.maxDownloads - (outcome.downloadsBefore + 1))
         : null
 
     return c.json(

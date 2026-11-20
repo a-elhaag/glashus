@@ -467,12 +467,9 @@ export function registerAiRoutes(app: ApiApp): void {
       userCollection(db, uid, "files").get(),
     ])
 
+    const rawMode = userSnap.data()?.aiMode
     const aiMode =
-      userSnap.data()?.aiMode === "off"
-        ? "off"
-        : userSnap.data()?.aiMode === "allow"
-          ? "allow"
-          : "ask"
+      rawMode === "allow" ? "allow" : rawMode === "ask" ? "ask" : "off"
 
     if (aiMode === "off") {
       return c.json(
@@ -530,7 +527,9 @@ export function registerAiRoutes(app: ApiApp): void {
         if (folderId && f.folderId !== folderId) return false
         if (f.folderId) {
           const folder = folderMap.get(f.folderId)
-          if (folder?.vault || folder?.aiConsent === "off") return false
+          if (!folder || folder.vault || folder.aiConsent === "off") {
+            return false
+          }
         }
         return isTextInspectable(f.name, f.mime)
       })
