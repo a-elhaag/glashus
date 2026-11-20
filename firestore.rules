@@ -1,0 +1,290 @@
+rules_version = '2';
+
+// =============================================================================
+// Glashus — Cloud Firestore Security Rules (v2)
+// =============================================================================
+//
+// Security Architecture Invariants:
+// 1. Default Deny:
+//    All reads and writes are denied by default via the root catch-all rule.
+// 2. No Client Writes Anywhere (`allow write: if false;`):
+//    `write` covers `create`, `update`, and `delete`. Every mutation goes
+//    exclusively through the Cloud Run API, scanner worker, or scheduled jobs
+//    using the Firebase Admin SDK (which bypasses Security Rules). Blocking
+//    client writes guarantees that clients cannot bypass JWT/ownership checks,
+//    10 GB storage or monthly download quotas, ClamAV + Sensitive Data
+//    Protection scanning, Cloud KMS key wrapping, per-folder AI consent, or
+//    append-only audit and AI access logging.
+// 3. Strictly Scoped Owner Reads (`read` = `get` + `list`):
+//    Authenticated users (`request.auth != null && request.auth.uid == uid`)
+//    may read only their own `/users/{uid}` subtree (`users/{uid}`, `folders`,
+//    `files`, `chunks`) and their own per-user telemetry subcollections
+//    (`usage/{uid}/months`, `audit/{uid}/events`, `aiLog/{uid}/reads`).
+// 4. `wrappedDataKey` Assumption on `users/{uid}`:
+//    Per `docs/glashus-project-docs.md` (lines 202 and 215), `users/{uid}`
+//    stores `wrappedDataKey` (a 256-bit data key wrapped/encrypted by the
+//    Cloud KMS master key) and remains readable by the owning `uid`. Only the
+//    Cloud Run service account holds `cloudkms.cryptoKeyEncrypterDecrypter`, so
+//    the wrapped ciphertext cannot be unwrapped by clients. If stricter field
+//    isolation is ever desired, `wrappedDataKey` should be moved to a separate
+//    server-only collection/document rather than kept on `users/{uid}`.
+// 5. Server-Only Collections (`allow read, write: if false;`):
+//    - `/files/{fileId}/versions/{versionId}` and `/files/{fileId}/findings/{findingId}`:
+//      Top-level `/files/{fileId}` paths are not scoped by `{uid}` in the
+//      document path. The Cloud Run API must verify file ownership against
+//      `/users/{uid}/files/{fileId}` before returning version manifests or
+//      masked DLP scan findings.
+//    - `/shares/{shareId}`:
+//      Resolved exclusively via the Cloud Run API so expiry (`expiresAt`),
+//      download caps (`maxDownloads` vs `downloads`), optional PIN verification
+//      (`pinHash`), owner egress billing, and 60s signed URLs are enforced
+//      without exposing `pinHash`, `ownerUid`, or share tokens to clients.
+//    - `/canaries/{canaryId}`:
+//      Resolved and updated exclusively via the Cloud Run API so bait file
+//      state, alert channels, and trigger timestamps cannot be enumerated,
+//      spoofed, or suppressed by clients.
+//    - `/embeddings/{embeddingId}`:
+//      Queried exclusively via the Cloud Run API ("Ask my files") so per-folder
+//      `aiConsent` enforcement, prompt-injection screening, and mandatory
+//      `aiLog` recording run on every vector query.
+//
+// =============================================================================
+// Assumed Data Model (from docs/glashus-project-docs.md)
+// =============================================================================
+//
+// Collection: users/{uid}
+// Document ID: Firebase Auth UID
+// Fields:
+//   - name: string - user display name
+//   - email: string - user email (PII; owner-read only)
+//   - plan: string - subscription tier (e.g., 'free')
+//   - bytesUsed: int - total clean bytes stored
+//   - wrappedDataKey: string/bytes - KMS-wrapped 256-bit per-user data key
+//   - aiMode: string - user-level AI mode preference
+//
+// Subcollection: users/{uid}/folders/{folderId}
+// Document ID: folderId
+// Fields:
+//   - name: string - folder name
+//   - parentId: string|null - parent folderId or null for root
+//   - aiConsent: string - 'off' | 'ask' | 'allow'
+//   - vault: bool - true if client-side WebCrypto Vault folder
+//
+// Subcollection: users/{uid}/files/{fileId}
+// Document ID: fileId
+// Fields:
+//   - name: string - file display name
+//   - folderId: string|null - parent folderId
+//   - mime: string - MIME type
+//   - size: int - file size in bytes
+//   - currentVersion: int|string - active version identifier
+//   - scanStatus: string - 'quarantined' | 'clean' | 'blocked'
+//   - exposure: string|map - computed exposure state/summary
+//
+// Subcollection: users/{uid}/chunks/{hash}
+// Document ID: SHA-256 chunk hash
+// Fields:
+//   - refCount: int - number of referencing file versions
+//   - packId: string|null - packed chunk object identifier
+//   - offset: int - byte offset inside pack
+//   - length: int - chunk length in bytes
+//
+// Subcollection: usage/{uid}/months/{monthId}
+// Document ID: YYYY-MM
+// Fields:
+//   - downloadBytes: int - monthly egress bytes counted against owner
+//   - aiReads: int - monthly AI read count
+//
+// Subcollection: audit/{uid}/events/{eventId}
+// Document ID: eventId (append-only via Admin SDK)
+// Fields:
+//   - action: string - action name
+//   - target: string - affected resource identifier
+//   - actor: string - actor identifier
+//   - device: string - client/device metadata
+//   - ip: string - source IP
+//   - time: timestamp - event timestamp
+//
+// Subcollection: aiLog/{uid}/reads/{readId}
+// Document ID: readId (append-only via Admin SDK)
+// Fields:
+//   - fileId: string - file read by AI
+//   - purpose: string - operation purpose (ask, naming, diff, export)
+//   - sentSummary: string - summary of masked content sent
+//   - maskedCount: int - number of masked sensitive spans
+//   - model: string - Vertex AI model identifier
+//   - time: timestamp - read timestamp
+//
+// Server-Only Subcollection: files/{fileId}/versions/{versionId}
+// Document ID: version number/ID
+// Fields:
+//   - chunkHashes: list<string> - ordered SHA-256 chunk manifest
+//   - size: int - version byte size
+//   - createdAt: timestamp - creation time
+//   - author: string - uploader UID
+//
+// Server-Only Subcollection: files/{fileId}/findings/{findingId}
+// Document ID: findingId
+// Fields:
+//   - type: string - finding category (ID, IBAN, API key, etc.)
+//   - location: string|map - masked location span
+//   - maskedValue: string - redacted/masked preview (never raw sensitive value)
+//   - detector: string - Sensitive Data Protection detector name
+//
+// Server-Only Collection: shares/{shareId}
+// Document ID: shareId
+// Fields:
+//   - fileId: string - shared fileId
+//   - ownerUid: string - owner UID (billed for egress)
+//   - audience: string - link/recipient scope
+//   - expiresAt: timestamp - link expiration timestamp
+//   - maxDownloads: int - download cap
+//   - downloads: int - current download count
+//   - pinHash: string|null - hashed optional PIN
+//   - redacted: bool - whether serving redacted copy
+//
+// Server-Only Collection: canaries/{canaryId}
+// Document ID: canaryId
+// Fields:
+//   - ownerUid: string - owner UID
+//   - fileId: string - bait fileId
+//   - lastTriggeredAt: timestamp|null - last open timestamp
+//   - channel: string - alert notification channel
+//
+// Server-Only Collection: embeddings/{embeddingId}
+// Document ID: {fileId}_{chunk}
+// Fields:
+//   - uid: string - owner UID
+//   - vector: vector(768) - Gemini 768-dim embedding
+//   - textSpan: string - indexed chunk text span
+//
+// =============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------------------------------------------------------------------------
+    // Helper Functions
+    // -------------------------------------------------------------------------
+
+    // Verify the request carries a valid Firebase Auth token.
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Verify the authenticated caller owns the `{uid}` path segment.
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // -------------------------------------------------------------------------
+    // Default Catch-All Deny (Root)
+    // -------------------------------------------------------------------------
+    // Explicitly deny all reads (`get`, `list`) and writes (`create`, `update`,
+    // `delete`) for any path not explicitly allowed below. Also prevents
+    // collection-group queries across unlisted or nested subcollections.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // User Subtree (`/users/{uid}` and explicit owner-readable subcollections)
+    // -------------------------------------------------------------------------
+    // Users may read (`get`, `list`) only their own profile document and the
+    // explicit subcollections listed below. Unlisted subcollections fall back
+    // to the root catch-all deny rule. All writes are blocked for clients.
+    match /users/{uid} {
+      // Keeps `users/{uid}` readable by owning `uid` per docs/glashus-project-docs.md
+      // line 215 (contains KMS-wrapped `wrappedDataKey` ciphertext; no client can
+      // unwrap it without Cloud Run's KMS IAM role).
+      allow read: if isOwner(uid);
+      allow write: if false;
+
+      match /folders/{folderId} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+
+      match /files/{fileId} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+
+      match /chunks/{hash} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Per-User Telemetry & Audit Collections
+    // -------------------------------------------------------------------------
+    // Parent container documents (`usage/{uid}`, `audit/{uid}`, `aiLog/{uid}`)
+    // are denied directly; only the documented leaf subcollections are readable
+    // by the owning user. All writes are performed exclusively via Admin SDK.
+    match /usage/{uid} {
+      allow read, write: if false;
+
+      match /months/{monthId} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+    }
+
+    match /audit/{uid} {
+      allow read, write: if false;
+
+      match /events/{eventId} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+    }
+
+    match /aiLog/{uid} {
+      allow read, write: if false;
+
+      match /reads/{readId} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Server-Only / Cross-User Collections (Zero Client Access)
+    // -------------------------------------------------------------------------
+    // Resolved, queried, and mutated exclusively via the Cloud Run API using
+    // the Firebase Admin SDK after JWT, ownership, quota, and consent checks.
+
+    // Version manifests and masked DLP findings are not path-scoped by `uid`;
+    // the API verifies file ownership before returning them.
+    match /files/{fileId} {
+      allow read, write: if false;
+
+      match /versions/{versionId} {
+        allow read, write: if false;
+      }
+
+      match /findings/{findingId} {
+        allow read, write: if false;
+      }
+    }
+
+    // Share links must pass through the API for expiry, download cap, and PIN
+    // verification and must never leak `pinHash` or owner billing metadata.
+    match /shares/{shareId} {
+      allow read, write: if false;
+    }
+
+    // Canary bait metadata and trigger channels are managed solely by the API
+    // so attackers or stolen sessions cannot inspect or suppress alerts.
+    match /canaries/{canaryId} {
+      allow read, write: if false;
+    }
+
+    // Vector embeddings are queried solely by the API to enforce per-folder
+    // AI consent, prompt-injection screening, and mandatory `aiLog` writes.
+    match /embeddings/{embeddingId} {
+      allow read, write: if false;
+    }
+  }
+}

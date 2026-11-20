@@ -1,0 +1,579 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "version": "0.1.0",
+    "title": "Glashus API",
+    "description": "Exposure-aware personal cloud drive API. Clients never name bucket paths directly."
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Firebase Authentication ID Token (JWT)."
+      }
+    },
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ],
+            "example": "ok"
+          },
+          "service": {
+            "type": "string",
+            "example": "glashus-api"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-11-20T12:00:00.000Z"
+          }
+        },
+        "required": [
+          "status",
+          "service",
+          "timestamp"
+        ]
+      },
+      "MeResponse": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/UserProfile"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/MonthlyUsage"
+          }
+        },
+        "required": [
+          "user",
+          "usage"
+        ]
+      },
+      "UserProfile": {
+        "type": "object",
+        "properties": {
+          "uid": {
+            "type": "string",
+            "minLength": 1,
+            "example": "usr_abc123"
+          },
+          "name": {
+            "type": "string",
+            "example": "Anas Abuelhaag"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "anas@example.com"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/Plan"
+          },
+          "bytesUsed": {
+            "type": "integer",
+            "minimum": 0,
+            "example": 1048576
+          },
+          "storageQuotaBytes": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "example": 10737418240
+          },
+          "aiMode": {
+            "$ref": "#/components/schemas/AiMode"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "uid",
+          "name",
+          "email",
+          "plan",
+          "bytesUsed",
+          "storageQuotaBytes",
+          "aiMode",
+          "createdAt"
+        ]
+      },
+      "Plan": {
+        "type": "string",
+        "enum": [
+          "free",
+          "plus_10gb",
+          "plus_100gb"
+        ]
+      },
+      "AiMode": {
+        "type": "string",
+        "enum": [
+          "off",
+          "ask",
+          "allow"
+        ]
+      },
+      "MonthlyUsage": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}$",
+            "example": "2026-11"
+          },
+          "downloadBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "example": 0
+          },
+          "downloadCapBytes": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "example": 10737418240
+          },
+          "aiReads": {
+            "type": "integer",
+            "minimum": 0,
+            "example": 0
+          }
+        },
+        "required": [
+          "month",
+          "downloadBytes",
+          "downloadCapBytes",
+          "aiReads"
+        ]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorDetail"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "ErrorDetail": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "UNAUTHORIZED"
+          },
+          "message": {
+            "type": "string",
+            "example": "Missing or invalid Bearer token."
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "FolderListResponse": {
+        "type": "object",
+        "properties": {
+          "folders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Folder"
+            }
+          }
+        },
+        "required": [
+          "folders"
+        ]
+      },
+      "Folder": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "example": "fld_root"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "example": "Taxes 2026"
+          },
+          "parentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": null
+          },
+          "aiConsent": {
+            "$ref": "#/components/schemas/AiConsent"
+          },
+          "vault": {
+            "type": "boolean",
+            "example": false
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "parentId",
+          "aiConsent",
+          "vault",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "AiConsent": {
+        "type": "string",
+        "enum": [
+          "off",
+          "ask",
+          "allow"
+        ]
+      },
+      "CreateFolderRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "example": "Receipts"
+          },
+          "parentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null,
+            "example": null
+          },
+          "aiConsent": {
+            "$ref": "#/components/schemas/AiConsent"
+          },
+          "vault": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "FileListResponse": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FileRecord"
+            }
+          }
+        },
+        "required": [
+          "files"
+        ]
+      },
+      "FileRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "example": "fil_01JABC"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "example": "tax-return-2025.pdf"
+          },
+          "folderId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "fld_root"
+          },
+          "mime": {
+            "type": "string",
+            "minLength": 1,
+            "example": "application/pdf"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0,
+            "example": 1245184
+          },
+          "currentVersion": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "example": 1
+          },
+          "scanStatus": {
+            "$ref": "#/components/schemas/ScanStatus"
+          },
+          "exposure": {
+            "$ref": "#/components/schemas/ExposureLevel"
+          },
+          "findingCount": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "trashedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "default": null
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "folderId",
+          "mime",
+          "size",
+          "currentVersion",
+          "scanStatus",
+          "exposure",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "ScanStatus": {
+        "type": "string",
+        "enum": [
+          "quarantined",
+          "clean",
+          "blocked"
+        ]
+      },
+      "ExposureLevel": {
+        "type": "string",
+        "enum": [
+          "private",
+          "shared",
+          "link",
+          "public"
+        ]
+      }
+    },
+    "parameters": {}
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "responses": {
+          "200": {
+            "description": "Service health status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/me": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current user profile and monthly usage summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Firebase JWT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/folders": {
+      "get": {
+        "tags": [
+          "Drive"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Folders owned by the authenticated user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FolderListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Firebase JWT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Drive"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFolderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Folder created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Folder"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Firebase JWT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/files": {
+      "get": {
+        "tags": [
+          "Drive"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "example": "fld_root"
+            },
+            "required": false,
+            "name": "folderId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Non-trashed files owned by the authenticated user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid Firebase JWT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "webhooks": {}
+}

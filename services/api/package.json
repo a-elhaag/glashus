@@ -1,0 +1,32 @@
+{
+  "name": "@workspace/api",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "lint": "eslint",
+    "format": "prettier --write \"**/*.ts\"",
+    "typecheck": "tsc --noEmit",
+    "openapi:export": "tsx src/scripts/export-openapi.ts"
+  },
+  "dependencies": {
+    "@google-cloud/storage": "^7.16.0",
+    "@hono/node-server": "^1.14.0",
+    "@hono/zod-openapi": "^1.1.0",
+    "@workspace/schema": "workspace:*",
+    "firebase-admin": "^13.4.0",
+    "hono": "^4.7.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@workspace/eslint-config": "workspace:*",
+    "@workspace/typescript-config": "workspace:*",
+    "eslint": "^10",
+    "tsx": "^4.19.3",
+    "typescript": "^5"
+  }
+}
