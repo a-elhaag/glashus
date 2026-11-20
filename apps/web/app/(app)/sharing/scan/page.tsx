@@ -1,578 +1,602 @@
 "use client"
 
 import * as React from "react"
+import { useSearchParams } from "next/navigation"
 import {
   Button,
   Chip,
   FileTile,
+  Icon,
   PageHead,
   Seg,
-  Sidebar,
 } from "@workspace/ui/components/glashus"
+import { AppSidebar } from "@/components/app-sidebar"
+import { glashusApi } from "@/lib/api"
+import { extractExt, formatBytes, formatShortDate } from "@/lib/format"
+import {
+  type FileData,
+  type FindingData,
+  unwrapApi,
+  useFiles,
+  useInvalidateDrive,
+} from "@/lib/queries"
 
-type PreviewMode = "Side by side" | "Redacted only"
+function ScanReportInner() {
+  const params = useSearchParams()
+  const initialFileId = params.get("fileId")
 
-interface ScanFinding {
-  id: string
-  label: string
-  location: string
-  detector: string
-  sampleValue: string
-  redactWidth: number
-}
+  const { data: files = [], isLoading: filesLoading } = useFiles({
+    trashed: false,
+  })
+  const invalidate = useInvalidateDrive()
 
-interface ScannedFile {
-  id: string
-  name: string
-  ext: string
-  tone: 0 | 1 | 2
-  docTitle: string
-  findings: ScanFinding[]
-}
+  const orderedFiles = React.useMemo(() => {
+    return [...files].sort((a, b) => {
+      if (b.findingCount !== a.findingCount) {
+        return b.findingCount - a.findingCount
+      }
+      return b.updatedAt.localeCompare(a.updatedAt)
+    })
+  }, [files])
 
-const SCANNED_FILES: ScannedFile[] = [
-  {
-    id: "tax",
-    name: "tax-return-2025.pdf",
-    ext: "PDF",
-    tone: 2,
-    docTitle: "Tax return 2025",
-    findings: [
-      {
-        id: "tax-nid",
-        label: "National ID",
-        location: "Page 1",
-        detector: "Pattern + checksum",
-        sampleValue: "784-1990-1234567-1",
-        redactWidth: 130,
-      },
-      {
-        id: "tax-iban",
-        label: "IBAN",
-        location: "Page 1",
-        detector: "Pattern + checksum",
-        sampleValue: "DE89 3704 0044 0532 0130 00",
-        redactWidth: 200,
-      },
-    ],
-  },
-  {
-    id: "env",
-    name: "api-config.env",
-    ext: "ENV",
-    tone: 2,
-    docTitle: "api-config.env",
-    findings: [
-      {
-        id: "env-key",
-        label: "Google API key",
-        location: "Line 4",
-        detector: "Prefix + entropy",
-        sampleValue: "AIzaSyD-9fK2-demo-x8Q1mP",
-        redactWidth: 170,
-      },
-    ],
-  },
-  {
-    id: "passport",
-    name: "passport-scan.jpg",
-    ext: "JPG",
-    tone: 0,
-    docTitle: "Passport scan",
-    findings: [
-      {
-        id: "pass-id",
-        label: "ID number",
-        location: "Region 2",
-        detector: "OCR + checksum",
-        sampleValue: "L898902C3-UTO",
-        redactWidth: 135,
-      },
-    ],
-  },
-  {
-    id: "survey",
-    name: "survey-data.csv",
-    ext: "CSV",
-    tone: 2,
-    docTitle: "survey-data.csv",
-    findings: [
-      {
-        id: "survey-email",
-        label: "Email address",
-        location: "Column C",
-        detector: "Format match",
-        sampleValue: "nadia.k@example.edu",
-        redactWidth: 150,
-      },
-      {
-        id: "survey-phone",
-        label: "Phone number",
-        location: "Column D",
-        detector: "Pattern match",
-        sampleValue: "+49 170 4829104",
-        redactWidth: 125,
-      },
-      {
-        id: "survey-dob",
-        label: "Date of birth",
-        location: "Column E",
-        detector: "Pattern match",
-        sampleValue: "1994-08-19",
-        redactWidth: 96,
-      },
-    ],
-  },
-  {
-    id: "thesis",
-    name: "thesis-draft-v4.docx",
-    ext: "DOC",
-    tone: 0,
-    docTitle: "Thesis draft v4",
-    findings: [],
-  },
-]
+  const [selectedId, setSelectedId] = React.useState<string>(initialFileId ?? "")
+  React.useEffect(() => {
+    if (initialFileId) {
+      setSelectedId(initialFileId)
+      return
+    }
+    if (!selectedId && orderedFiles[0]) {
+      setSelectedId(orderedFiles[0].id)
+    }
+  }, [initialFileId, orderedFiles, selectedId])
 
-interface ToastState {
-  msg: string
-  undoLabel?: string
-  undo?: () => void
-}
-
-export default function ScanPage() {
-  const [selectedFileId, setSelectedFileId] = React.useState("tax")
-  const [previewMode, setPreviewMode] = React.useState<PreviewMode>("Side by side")
-  const [safeFindingIds, setSafeFindingIds] = React.useState<string[]>([])
-  const [blockedFileIds, setBlockedFileIds] = React.useState<string[]>([])
-  const [redactedFileIds, setRedactedFileIds] = React.useState<string[]>([])
-  const [rescanningFileId, setRescanningFileId] = React.useState<string | null>(null)
-  const [toast, setToast] = React.useState<ToastState | null>(null)
-
-  const toastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
-  const rescanTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [search, setSearch] = React.useState("")
+  const [viewMode, setViewMode] = React.useState<"Side by side" | "Redacted only">(
+    "Side by side"
+  )
+  const [detailFile, setDetailFile] = React.useState<FileData | null>(null)
+  const [findings, setFindings] = React.useState<FindingData[]>([])
+  const [loadingFindings, setLoadingFindings] = React.useState(false)
+  const [busyAction, setBusyAction] = React.useState<string | null>(null)
+  const [toast, setToast] = React.useState<string | null>(null)
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   React.useEffect(() => {
     return () => {
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
-      if (rescanTimerRef.current) clearTimeout(rescanTimerRef.current)
+      if (timerRef.current) clearTimeout(timerRef.current)
     }
   }, [])
 
-  const showToast = React.useCallback((next: ToastState) => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
-    setToast(next)
-    toastTimerRef.current = setTimeout(() => {
-      setToast(null)
-      toastTimerRef.current = null
-    }, 5000)
+  const notify = React.useCallback((msg: string) => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    setToast(msg)
+    timerRef.current = setTimeout(() => setToast(null), 3200)
   }, [])
+
+  const loadFindings = React.useCallback(async (fileId: string) => {
+    setLoadingFindings(true)
+    try {
+      const res = unwrapApi(
+        await glashusApi.GET("/v1/files/{id}/findings", {
+          params: { path: { id: fileId } },
+        })
+      )
+      setDetailFile(res.file)
+      setFindings(res.findings)
+    } catch (err) {
+      setDetailFile(null)
+      setFindings([])
+      notify(err instanceof Error ? err.message : "Could not load scan report.")
+    } finally {
+      setLoadingFindings(false)
+    }
+  }, [notify])
+
+  React.useEffect(() => {
+    if (!selectedId) {
+      setDetailFile(null)
+      setFindings([])
+      return
+    }
+    void loadFindings(selectedId)
+  }, [loadFindings, selectedId])
 
   const selectedFile =
-    SCANNED_FILES.find((f) => f.id === selectedFileId) ?? SCANNED_FILES[0]
+    detailFile ?? orderedFiles.find((f) => f.id === selectedId) ?? null
 
-  if (!selectedFile) return null
+  const filteredList = React.useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return orderedFiles
+    return orderedFiles.filter((f) => f.name.toLowerCase().includes(q))
+  }, [orderedFiles, search])
 
-  const activeFindings = selectedFile.findings.filter(
-    (finding) => !safeFindingIds.includes(finding.id)
+  const activeFindings = React.useMemo(
+    () => findings.filter((f) => !f.safe),
+    [findings]
   )
-  const dismissedFindings = selectedFile.findings.filter((finding) =>
-    safeFindingIds.includes(finding.id)
-  )
-  const isBlocked = blockedFileIds.includes(selectedFile.id)
-  const hasRedactedCopy = redactedFileIds.includes(selectedFile.id)
-  const isRescanning = rescanningFileId === selectedFile.id
 
-  const handleMarkSafe = (finding: ScanFinding) => {
-    const prevSafe = safeFindingIds
-    setSafeFindingIds((curr) =>
-      curr.includes(finding.id) ? curr : [...curr, finding.id]
-    )
-    showToast({
-      msg: `Marked ${finding.label} as safe`,
-      undoLabel: "Undo",
-      undo: () => {
-        setSafeFindingIds(prevSafe)
-        setToast(null)
-      },
-    })
-  }
-
-  const handleRestoreFinding = (finding: ScanFinding) => {
-    const prevSafe = safeFindingIds
-    setSafeFindingIds((curr) => curr.filter((id) => id !== finding.id))
-    showToast({
-      msg: `Restored ${finding.label} finding`,
-      undoLabel: "Undo",
-      undo: () => {
-        setSafeFindingIds(prevSafe)
-        setToast(null)
-      },
-    })
-  }
-
-  const handleRescan = () => {
-    if (rescanTimerRef.current) clearTimeout(rescanTimerRef.current)
-    const file = selectedFile
-    const prevSafe = safeFindingIds
-    const fileFindingIds = new Set(file.findings.map((f) => f.id))
-    setRescanningFileId(file.id)
-
-    rescanTimerRef.current = setTimeout(() => {
-      rescanTimerRef.current = null
-      setRescanningFileId(null)
-      setSafeFindingIds((curr) => curr.filter((id) => !fileFindingIds.has(id)))
-      showToast({
-        msg: `Rescan complete for ${file.name}`,
-        undoLabel: prevSafe.some((id) => fileFindingIds.has(id)) ? "Undo" : undefined,
-        undo: prevSafe.some((id) => fileFindingIds.has(id))
-          ? () => {
-              setSafeFindingIds(prevSafe)
-              setToast(null)
-            }
-          : undefined,
-      })
-    }, 450)
-  }
-
-  const handleToggleBlockOriginal = () => {
-    const prevBlocked = blockedFileIds
-    const currentlyBlocked = prevBlocked.includes(selectedFile.id)
-    const nextBlocked = currentlyBlocked
-      ? prevBlocked.filter((id) => id !== selectedFile.id)
-      : [...prevBlocked, selectedFile.id]
-    setBlockedFileIds(nextBlocked)
-    showToast({
-      msg: currentlyBlocked
-        ? `Unblocked original sharing for ${selectedFile.name}`
-        : `Blocked sharing original for ${selectedFile.name}`,
-      undoLabel: "Undo",
-      undo: () => {
-        setBlockedFileIds(prevBlocked)
-        setToast(null)
-      },
-    })
-  }
-
-  const handleCreateRedactedCopy = () => {
-    const prevRedacted = redactedFileIds
-    if (!prevRedacted.includes(selectedFile.id)) {
-      setRedactedFileIds([...prevRedacted, selectedFile.id])
+  const toggleSafe = async (finding: FindingData) => {
+    if (!selectedFile) return
+    setBusyAction(finding.id)
+    try {
+      const updated = unwrapApi(
+        await glashusApi.PATCH("/v1/files/{id}/findings/{findingId}", {
+          params: { path: { id: selectedFile.id, findingId: finding.id } },
+          body: { safe: !finding.safe },
+        })
+      )
+      setFindings((prev) =>
+        prev.map((item) => (item.id === updated.id ? updated : item))
+      )
+      invalidate()
+      notify(
+        finding.safe
+          ? `Restored finding ${finding.type}`
+          : `Marked ${finding.type} as safe`
+      )
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed to update finding.")
+    } finally {
+      setBusyAction(null)
     }
-    showToast({
-      msg: `Redacted copy created for ${selectedFile.name}`,
-      undoLabel: "Undo",
-      undo: () => {
-        setRedactedFileIds(prevRedacted)
-        setToast(null)
-      },
-    })
+  }
+
+  const rescanFile = async () => {
+    if (!selectedFile) return
+    setBusyAction("rescan")
+    try {
+      const res = unwrapApi(
+        await glashusApi.POST("/v1/files/{id}/rescan", {
+          params: { path: { id: selectedFile.id } },
+        })
+      )
+      setDetailFile(res.file)
+      setFindings(res.findings)
+      invalidate()
+      notify(
+        `Scan complete: ${res.findings.filter((f) => !f.safe).length} active finding(s)`
+      )
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Rescan failed.")
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  const toggleBlockOriginal = async () => {
+    if (!selectedFile) return
+    const next = !selectedFile.originalBlocked
+    setBusyAction("block")
+    try {
+      const updated = unwrapApi(
+        await glashusApi.PATCH("/v1/files/{id}", {
+          params: { path: { id: selectedFile.id } },
+          body: { originalBlocked: next },
+        })
+      )
+      setDetailFile(updated)
+      invalidate()
+      notify(
+        next
+          ? `Original sharing blocked for ${updated.name}`
+          : `Original sharing allowed for ${updated.name}`
+      )
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Could not update file policy.")
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  const createRedactedCopy = async () => {
+    if (!selectedFile) return
+    setBusyAction("redact")
+    try {
+      const created = unwrapApi(
+        await glashusApi.POST("/v1/files/{id}/redacted-copy", {
+          params: { path: { id: selectedFile.id } },
+        })
+      )
+      invalidate()
+      await loadFindings(selectedFile.id)
+      notify(`Created redacted copy: ${created.name}`)
+    } catch (err) {
+      notify(
+        err instanceof Error ? err.message : "Could not create redacted copy."
+      )
+    } finally {
+      setBusyAction(null)
+    }
   }
 
   return (
     <div className="app" style={{ minHeight: 900 }}>
-      <Sidebar active="scan" />
+      <AppSidebar active="scan" />
       <main className="main">
         <PageHead
           title="Scan report"
-          sub="What Glashus found, and how it was handled"
+          sub="ClamAV + DLP inspection results. Raw sensitive tokens are masked at scan time and never persisted."
           cta="Upload"
           ctaIcon="upload"
+          ctaHref="/drive/upload"
+          searchValue={search}
+          onSearchChange={setSearch}
         />
 
-        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-          <aside
-            className="glass col"
+        {filesLoading ? (
+          <div className="glass card" style={{ padding: 24 }}>
+            <span className="sm muted">Loading scanned files…</span>
+          </div>
+        ) : orderedFiles.length === 0 ? (
+          <div className="glass card col" style={{ padding: 28, gap: 10 }}>
+            <span className="h2">No files scanned yet</span>
+            <p className="p muted" style={{ margin: 0 }}>
+              Upload a document to run malware and sensitive data inspection.
+            </p>
+            <div>
+              <Button
+                label="Upload a file"
+                variant="primary"
+                icon="upload"
+                href="/drive/upload"
+              />
+            </div>
+          </div>
+        ) : (
+          <div
             style={{
-              flex: "0 0 340px",
-              maxWidth: "100%",
-              borderRadius: 22,
-              padding: 12,
-              gap: 2,
-              alignSelf: "flex-start",
+              display: "grid",
+              gridTemplateColumns: "minmax(250px, 300px) minmax(0, 1fr)",
+              gap: 16,
+              alignItems: "start",
             }}
           >
-            <span className="navlabel" style={{ paddingTop: 6 }}>
-              Files with findings
-            </span>
-            {SCANNED_FILES.map((file) => {
-              const remainingCount = file.findings.filter(
-                (f) => !safeFindingIds.includes(f.id)
-              ).length
-              const selected = file.id === selectedFile.id
-              return (
-                <button
-                  key={file.id}
-                  type="button"
-                  onClick={() => setSelectedFileId(file.id)}
-                  className={`row${selected ? " sel" : ""}`}
-                  style={{
-                    gap: 12,
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    border: 0,
-                    background: selected ? undefined : "transparent",
-                    textAlign: "left",
-                    width: "100%",
-                    cursor: "pointer",
-                    color: "var(--ink)",
-                  }}
-                >
-                  <FileTile ext={file.ext} tone={file.tone} size={32} />
-                  <span className="grow sm m ell">{file.name}</span>
-                  {remainingCount > 0 ? (
-                    <Chip label={`${remainingCount} found`} tone="accent" />
-                  ) : (
-                    <Chip label="Clean" tone="clear" icon="check" />
-                  )}
-                </button>
-              )
-            })}
-          </aside>
-
-          <section className="col" style={{ flex: "1 1 560px", minWidth: 0, gap: 16 }}>
-            <div className="glass card col" style={{ gap: 16 }}>
-              <div className="row wrap between">
-                <div className="row" style={{ gap: 10 }}>
-                  <h2 className="h2">Redaction preview</h2>
-                  {isBlocked ? (
-                    <Chip label="Original blocked" tone="dark" icon="lock" />
-                  ) : null}
-                  {hasRedactedCopy ? (
-                    <Chip label="Redacted copy ready" tone="accent" icon="check" />
-                  ) : null}
-                </div>
-                <Seg
-                  options="Side by side|Redacted only"
-                  value={previewMode}
-                  onChange={(val) => setPreviewMode(val as PreviewMode)}
-                  aria-label="Preview layout"
-                />
-              </div>
-
+            <aside
+              className="glass card pad0 col"
+              style={{ borderRadius: 20, overflow: "hidden", gap: 0 }}
+            >
               <div
-                className="row wrap"
-                style={{ gap: 16, alignItems: "stretch" }}
+                className="row between"
+                style={{
+                  padding: "14px 16px",
+                  borderBottom: "1px solid var(--line)",
+                }}
               >
-                {previewMode === "Side by side" ? (
-                  <div className="col" style={{ flex: "1 1 240px", gap: 8 }}>
-                    <span className="xs b muted">Original</span>
-                    <div
-                      className="sheet col"
-                      style={{ padding: 28, gap: 12, flex: 1 }}
+                <span className="sm m">Files ({filteredList.length})</span>
+                <span className="xs muted">Flagged first</span>
+              </div>
+              <div className="col" style={{ gap: 2, padding: 8 }}>
+                {filteredList.map((f) => {
+                  const selected = f.id === selectedId
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setSelectedId(f.id)}
+                      className="row"
+                      style={{
+                        gap: 10,
+                        padding: "10px 10px",
+                        borderRadius: 12,
+                        textAlign: "left",
+                        cursor: "pointer",
+                        border: "none",
+                        background: selected
+                          ? "rgba(255,255,255,0.68)"
+                          : "transparent",
+                      }}
                     >
-                      <span className="b">{selectedFile.docTitle}</span>
-                      <div className="line" style={{ width: "40%" }} />
-                      {selectedFile.findings.length > 0 ? (
-                        selectedFile.findings.map((finding) => {
-                          const isSafe = safeFindingIds.includes(finding.id)
-                          return (
-                            <div
-                              key={finding.id}
-                              className="row wrap sm"
-                              style={{ gap: 10 }}
-                            >
-                              <span className="muted" style={{ width: 92 }}>
-                                {finding.label}
-                              </span>
-                              <span
-                                className="mono"
-                                style={{
-                                  background: isSafe
-                                    ? "rgba(17,17,17,0.06)"
-                                    : "color-mix(in srgb, var(--accent) 14%, transparent)",
-                                  padding: "1px 4px",
-                                  borderRadius: 4,
-                                  textDecoration: isSafe ? "line-through" : "none",
-                                  color: isSafe ? "var(--ink3)" : "var(--ink)",
-                                }}
-                              >
-                                {finding.sampleValue}
-                              </span>
-                            </div>
-                          )
-                        })
-                      ) : (
-                        <span className="sm muted">
-                          No sensitive identifiers detected in this document.
+                      <FileTile
+                        ext={extractExt(f.name)}
+                        tone={f.findingCount > 0 ? 2 : 0}
+                        size={32}
+                      />
+                      <div className="col grow" style={{ minWidth: 0, gap: 2 }}>
+                        <span className="sm m ell">{f.name}</span>
+                        <span className="xs muted">
+                          {f.scanStatus === "blocked"
+                            ? "Blocked"
+                            : f.findingCount > 0
+                              ? `${f.findingCount} finding${f.findingCount === 1 ? "" : "s"}`
+                              : "Clean"}
                         </span>
-                      )}
-                      <div className="line" />
-                      <div className="line" style={{ width: "88%" }} />
-                      <div className="line" style={{ width: "64%" }} />
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </aside>
+
+            {selectedFile ? (
+              <div className="col" style={{ gap: 16, minWidth: 0 }}>
+                <section className="glass card col" style={{ gap: 14 }}>
+                  <div className="row wrap between" style={{ gap: 12 }}>
+                    <div className="row" style={{ gap: 12, minWidth: 0 }}>
+                      <FileTile
+                        ext={extractExt(selectedFile.name)}
+                        tone={activeFindings.length > 0 ? 2 : 0}
+                        size={42}
+                      />
+                      <div className="col" style={{ minWidth: 0, gap: 2 }}>
+                        <span className="h2 ell">{selectedFile.name}</span>
+                        <span className="xs muted">
+                          {formatBytes(selectedFile.size)} · Updated{" "}
+                          {formatShortDate(selectedFile.updatedAt)} · Status:{" "}
+                          {selectedFile.scanStatus}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ) : null}
 
-                <div className="col" style={{ flex: "1 1 240px", gap: 8 }}>
-                  <span className="xs b muted">Redacted copy</span>
-                  <div
-                    className="sheet col"
-                    style={{ padding: 28, gap: 12, flex: 1 }}
-                  >
-                    <span className="b">{selectedFile.docTitle}</span>
-                    <div className="line" style={{ width: "40%" }} />
-                    {selectedFile.findings.length > 0 ? (
-                      selectedFile.findings.map((finding) => {
-                        const isSafe = safeFindingIds.includes(finding.id)
-                        return (
-                          <div
-                            key={finding.id}
-                            className="row wrap sm"
-                            style={{ gap: 10 }}
-                          >
-                            <span className="muted" style={{ width: 92 }}>
-                              {finding.label}
-                            </span>
-                            {isSafe ? (
-                              <span className="mono muted">
-                                {finding.sampleValue}
-                              </span>
-                            ) : (
-                              <span
-                                className="redact"
-                                style={{ width: finding.redactWidth, maxWidth: "100%" }}
-                              />
-                            )}
-                          </div>
-                        )
-                      })
-                    ) : (
-                      <span className="sm muted">
-                        Clean file — nothing required redaction.
-                      </span>
-                    )}
-                    <div className="line" />
-                    <div className="line" style={{ width: "88%" }} />
-                    <div className="line" style={{ width: "64%" }} />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="glass card col" style={{ gap: 10 }}>
-              <div className="row between wrap" style={{ gap: 8 }}>
-                <h2 className="h2">Findings</h2>
-                <Button
-                  label={isRescanning ? "Scanning…" : "Scan again"}
-                  variant="ghost"
-                  size="sm"
-                  icon="rotate"
-                  disabled={isRescanning}
-                  onClick={handleRescan}
-                  style={isRescanning ? { opacity: 0.6, cursor: "wait" } : undefined}
-                />
-              </div>
-
-              {activeFindings.length > 0 ? (
-                activeFindings.map((finding) => (
-                  <div
-                    key={finding.id}
-                    className="row wrap sm"
-                    style={{ gap: 12 }}
-                  >
-                    <span className="grow m">{finding.label}</span>
-                    <span className="muted">{finding.location}</span>
-                    <Chip label={finding.detector} tone="neutral" />
-                    <Button
-                      label="Mark safe"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleMarkSafe(finding)}
-                    />
-                  </div>
-                ))
-              ) : (
-                <div className="row sm" style={{ gap: 8, padding: "4px 0" }}>
-                  <Chip label="No active findings" tone="clear" icon="check" />
-                  <span className="muted">
-                    {dismissedFindings.length > 0
-                      ? "All detected items were marked safe."
-                      : "This file passed deterministic checks."}
-                  </span>
-                </div>
-              )}
-
-              {dismissedFindings.length > 0 ? (
-                <div
-                  className="col"
-                  style={{
-                    gap: 8,
-                    marginTop: 6,
-                    paddingTop: 10,
-                    borderTop: "1px solid rgba(17,17,17,0.06)",
-                  }}
-                >
-                  <span className="xs b muted">Marked safe</span>
-                  {dismissedFindings.map((finding) => (
-                    <div
-                      key={finding.id}
-                      className="row wrap sm muted"
-                      style={{ gap: 12 }}
-                    >
-                      <span className="grow">{finding.label}</span>
-                      <span>{finding.location}</span>
+                    <div className="row wrap" style={{ gap: 8 }}>
+                      <Chip
+                        label={
+                          activeFindings.length > 0
+                            ? `${activeFindings.length} active findings`
+                            : "Clear"
+                        }
+                        tone={activeFindings.length > 0 ? "accent" : "clear"}
+                      />
                       <Button
-                        label="Restore"
-                        variant="ghost"
+                        label={
+                          busyAction === "rescan" ? "Scanning…" : "Scan again"
+                        }
                         size="sm"
-                        icon="undo"
-                        onClick={() => handleRestoreFinding(finding)}
+                        icon="search"
+                        disabled={busyAction !== null}
+                        onClick={() => void rescanFile()}
+                      />
+                      <Button
+                        label="Share"
+                        size="sm"
+                        variant="primary"
+                        icon="share"
+                        href={`/sharing/share?fileId=${encodeURIComponent(selectedFile.id)}`}
                       />
                     </div>
-                  ))}
-                </div>
-              ) : null}
+                  </div>
 
-              <p className="xs muted" style={{ margin: "4px 0 0" }}>
-                Found by deterministic detectors, not by AI guesses. Every value
-                is masked before any AI sees the file.
-              </p>
-            </div>
+                  <div className="row wrap between" style={{ gap: 10 }}>
+                    <Seg
+                      options="Side by side|Redacted only"
+                      value={viewMode}
+                      onChange={(val) => {
+                        if (
+                          val === "Side by side" ||
+                          val === "Redacted only"
+                        ) {
+                          setViewMode(val)
+                        }
+                      }}
+                      aria-label="Scan diff mode"
+                    />
+                    <div className="row wrap" style={{ gap: 8 }}>
+                      <Button
+                        label={
+                          busyAction === "block"
+                            ? "Updating…"
+                            : selectedFile.originalBlocked
+                              ? "Allow original"
+                              : "Block original"
+                        }
+                        size="sm"
+                        variant={
+                          selectedFile.originalBlocked ? "ghost" : "danger"
+                        }
+                        disabled={busyAction !== null}
+                        onClick={() => void toggleBlockOriginal()}
+                      />
+                      <Button
+                        label={
+                          busyAction === "redact"
+                            ? "Creating…"
+                            : "Create redacted copy"
+                        }
+                        size="sm"
+                        variant="primary"
+                        disabled={busyAction !== null}
+                        onClick={() => void createRedactedCopy()}
+                      />
+                    </div>
+                  </div>
+                </section>
 
-            <div
-              className="row wrap"
-              style={{ gap: 10, justifyContent: "flex-end" }}
-            >
-              <Button
-                label={
-                  isBlocked ? "Allow sharing original" : "Block sharing original"
-                }
-                variant="secondary"
-                size="md"
-                icon="lock"
-                onClick={handleToggleBlockOriginal}
-              />
-              <Button
-                label={
-                  hasRedactedCopy ? "Update redacted copy" : "Create redacted copy"
-                }
-                variant="primary"
-                size="md"
-                icon="redact"
-                onClick={handleCreateRedactedCopy}
-              />
-            </div>
-          </section>
-        </div>
+                <section
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      viewMode === "Side by side"
+                        ? "repeat(auto-fit, minmax(260px, 1fr))"
+                        : "minmax(0, 1fr)",
+                    gap: 14,
+                  }}
+                >
+                  {viewMode === "Side by side" ? (
+                    <div className="glass card col" style={{ gap: 10 }}>
+                      <div className="row between">
+                        <span className="sm m">Original vault copy</span>
+                        <Chip
+                          label={
+                            selectedFile.originalBlocked ? "Blocked" : "Allowed"
+                          }
+                          tone={
+                            selectedFile.originalBlocked ? "accent" : "neutral"
+                          }
+                        />
+                      </div>
+                      {findings.length === 0 ? (
+                        <span className="sm muted">
+                          No sensitive patterns matched in this file.
+                        </span>
+                      ) : (
+                        <div className="col" style={{ gap: 8 }}>
+                          {findings.map((f) => (
+                            <div
+                              key={f.id}
+                              className="glass-soft col"
+                              style={{
+                                padding: "10px 12px",
+                                borderRadius: 12,
+                                gap: 3,
+                              }}
+                            >
+                              <div className="row between">
+                                <span className="xs muted">{f.location}</span>
+                                <span className="xs muted">{f.detector}</span>
+                              </div>
+                              <span
+                                className="sm"
+                                style={{
+                                  fontFamily: "ui-monospace, monospace",
+                                }}
+                              >
+                                {f.type}: {f.maskedValue}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+
+                  <div className="glass card col" style={{ gap: 10 }}>
+                    <div className="row between">
+                      <span className="sm m">Redacted external view</span>
+                      <Chip
+                        label={
+                          selectedFile.hasRedactedCopy
+                            ? "Saved copy ready"
+                            : "Preview"
+                        }
+                        tone="clear"
+                      />
+                    </div>
+                    {findings.length === 0 ? (
+                      <span className="sm muted">
+                        Nothing to redact. Clean copy matches original structure.
+                      </span>
+                    ) : (
+                      <div className="col" style={{ gap: 8 }}>
+                        {findings.map((f) => (
+                          <div
+                            key={f.id}
+                            className="glass-soft col"
+                            style={{
+                              padding: "10px 12px",
+                              borderRadius: 12,
+                              gap: 4,
+                            }}
+                          >
+                            <span className="xs muted">{f.location}</span>
+                            <div className="row" style={{ gap: 8 }}>
+                              <span className="sm">{f.type}:</span>
+                              {f.safe ? (
+                                <span className="sm muted">
+                                  Preserved (marked safe)
+                                </span>
+                              ) : (
+                                <span className="redact sm">
+                                  [REDACTED {f.type}]
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                <section className="glass card col" style={{ gap: 10 }}>
+                  <div className="row between">
+                    <span className="h2">Findings ({findings.length})</span>
+                    <span className="xs muted">
+                      Mark false positives safe so future shares skip them
+                    </span>
+                  </div>
+
+                  {loadingFindings ? (
+                    <span className="sm muted">Loading findings…</span>
+                  ) : findings.length === 0 ? (
+                    <span className="sm muted">
+                      No findings recorded for this file.
+                    </span>
+                  ) : (
+                    <div className="col" style={{ gap: 8 }}>
+                      {findings.map((f) => (
+                        <div
+                          key={f.id}
+                          className="glass-soft row wrap between"
+                          style={{
+                            padding: "12px 14px",
+                            borderRadius: 14,
+                            gap: 10,
+                          }}
+                        >
+                          <div className="col" style={{ gap: 3 }}>
+                            <div className="row" style={{ gap: 8 }}>
+                              <span className="sm m">{f.type}</span>
+                              <Chip
+                                label={f.safe ? "Marked safe" : f.detector}
+                                tone={f.safe ? "clear" : "accent"}
+                              />
+                            </div>
+                            <span className="xs muted">
+                              {f.location} ·{" "}
+                              <span
+                                style={{ fontFamily: "ui-monospace, monospace" }}
+                              >
+                                {f.maskedValue}
+                              </span>
+                            </span>
+                          </div>
+                          <Button
+                            label={
+                              busyAction === f.id
+                                ? "…"
+                                : f.safe
+                                  ? "Restore"
+                                  : "Mark safe"
+                            }
+                            size="sm"
+                            variant="ghost"
+                            disabled={busyAction !== null}
+                            onClick={() => void toggleSafe(f)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </div>
+            ) : null}
+          </div>
+        )}
 
         {toast ? (
-          <div role="status" className="toast" style={{ position: "fixed" }}>
-            <span>{toast.msg}</span>
-            {toast.undo && toast.undoLabel ? (
-              <Button
-                label={toast.undoLabel}
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
-                  toastTimerRef.current = null
-                  toast.undo?.()
-                }}
-              />
-            ) : null}
+          <div className="toast">
+            <Icon glyph="check" size={14} /> {toast}
           </div>
         ) : null}
       </main>
     </div>
+  )
+}
+
+export default function ScanPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="app" style={{ minHeight: 900 }}>
+          <AppSidebar active="scan" />
+          <main className="main">
+            <div className="glass card" style={{ padding: 24 }}>
+              <span className="sm muted">Loading scan report…</span>
+            </div>
+          </main>
+        </div>
+      }
+    >
+      <ScanReportInner />
+    </React.Suspense>
   )
 }

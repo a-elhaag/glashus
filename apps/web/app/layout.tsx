@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import { Geist_Mono, Inter } from "next/font/google"
 
 import "@workspace/ui/globals.css"
-import { ThemeProvider } from "@/components/theme-provider"
+import { Providers } from "@/components/providers"
 
 const fontInter = Inter({
   subsets: ["latin"],
@@ -31,7 +31,7 @@ export default function RootLayout({
       className={`${fontInter.variable} ${fontMono.variable} font-sans antialiased`}
     >
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <Providers>{children}</Providers>
       </body>
     </html>
   )

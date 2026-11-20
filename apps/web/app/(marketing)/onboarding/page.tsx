@@ -2,20 +2,29 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
+import type { components } from "@workspace/sdk"
 import {
   Button,
   Chip,
   FileTile,
   Icon,
-  resolveBoardHref,
 } from "@workspace/ui/components/glashus"
+import { useAuth } from "@/components/providers"
+import { glashusApi } from "@/lib/api"
+import { extractExt } from "@/lib/format"
+import {
+  unwrapApi,
+  uploadFileToGlashus,
+  useInvalidateDrive,
+} from "@/lib/queries"
 
 type StepNumber = 1 | 2 | 3
+type CompleteResult = components["schemas"]["CompleteUploadResponse"]
 
 const STEP_COPY: Record<StepNumber, { title: string; sub: string }> = {
   1: {
     title: "Add your first file",
-    sub: "Anything works. We scan it before it lands in your drive.",
+    sub: "Anything works. We scan it in quarantine before it lands in your drive.",
   },
   2: {
     title: "Choose how AI may help",
@@ -23,20 +32,23 @@ const STEP_COPY: Record<StepNumber, { title: string; sub: string }> = {
   },
   3: {
     title: "Your first scan result",
-    sub: "This is what Glashus checks on every file.",
+    sub: "This is what Glashus checked on your upload.",
   },
 }
 
 const AI_MODES = [
   {
+    value: "off" as const,
     label: "Off",
     sub: "No AI reads your files.",
   },
   {
+    value: "ask" as const,
     label: "Ask each time",
     sub: "You approve every AI read. Recommended.",
   },
   {
+    value: "allow" as const,
     label: "Allowed folders only",
     sub: "AI reads folders you pick, with redaction on.",
   },
@@ -44,39 +56,72 @@ const AI_MODES = [
 
 export default function OnboardingPage() {
   const router = useRouter()
+  const { user, loading: authLoading } = useAuth()
+  const invalidateDrive = useInvalidateDrive()
+
   const [step, setStep] = React.useState<StepNumber>(1)
-  const [mode, setMode] = React.useState<number>(1)
-  const [selectedFile, setSelectedFile] = React.useState<string | null>(null)
+  const [aiMode, setAiMode] = React.useState<"off" | "ask" | "allow">("ask")
+  const [uploading, setUploading] = React.useState(false)
+  const [uploadProgress, setUploadProgress] = React.useState(0)
+  const [scanResult, setScanResult] = React.useState<CompleteResult | null>(null)
+  const [error, setError] = React.useState<string | null>(null)
+  const [savingMode, setSavingMode] = React.useState(false)
   const [dragOver, setDragOver] = React.useState(false)
   const fileInputRef = React.useRef<HTMLInputElement | null>(null)
 
+  React.useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace("/auth")
+    }
+  }, [authLoading, user, router])
+
   const currentStep = STEP_COPY[step]
-  const displayFileName = selectedFile ?? "passport-scan.jpg"
-  const fileExt =
-    displayFileName.split(".").pop()?.slice(0, 4).toUpperCase() || "JPG"
+
+  const runUpload = async (file: File) => {
+    setError(null)
+    setUploading(true)
+    setUploadProgress(5)
+    try {
+      const result = await uploadFileToGlashus(file, null, {
+        onProgress: (pct) => setUploadProgress(pct),
+      })
+      setScanResult(result)
+      invalidateDrive()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed.")
+    } finally {
+      setUploading(false)
+    }
+  }
 
   const handleBack = () => {
     setStep((prev) => (prev > 1 ? ((prev - 1) as StepNumber) : prev))
   }
 
-  const handleNext = () => {
-    if (step < 3) {
-      setStep((prev) => ((prev + 1) as StepNumber))
+  const handleNext = async () => {
+    setError(null)
+    if (step === 1) {
+      setStep(2)
       return
     }
-    router.push(resolveBoardHref("Main.dc.html"))
-  }
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) setSelectedFile(file.name)
-  }
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    setDragOver(false)
-    const file = e.dataTransfer.files?.[0]
-    if (file) setSelectedFile(file.name)
+    if (step === 2) {
+      setSavingMode(true)
+      try {
+        unwrapApi(
+          await glashusApi.PATCH("/v1/me", {
+            body: { aiMode },
+          })
+        )
+        invalidateDrive()
+        setStep(3)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to save AI preference.")
+      } finally {
+        setSavingMode(false)
+      }
+      return
+    }
+    router.push("/drive")
   }
 
   return (
@@ -116,6 +161,19 @@ export default function OnboardingPage() {
           </p>
         </div>
 
+        {error ? (
+          <div
+            role="alert"
+            className="glass-soft row"
+            style={{ padding: "10px 14px", borderRadius: 12, gap: 8 }}
+          >
+            <Icon glyph="warn" size={16} />
+            <span className="xs m" style={{ color: "var(--accent)" }}>
+              {error}
+            </span>
+          </div>
+        ) : null}
+
         {step === 1 ? (
           <div
             className="glass-soft col center"
@@ -124,7 +182,12 @@ export default function OnboardingPage() {
               setDragOver(true)
             }}
             onDragLeave={() => setDragOver(false)}
-            onDrop={handleDrop}
+            onDrop={(e) => {
+              e.preventDefault()
+              setDragOver(false)
+              const file = e.dataTransfer.files?.[0]
+              if (file) void runUpload(file)
+            }}
             style={{
               border: dragOver
                 ? "1.5px dashed var(--accent)"
@@ -138,22 +201,31 @@ export default function OnboardingPage() {
               <Icon glyph="upload" size={20} />
             </div>
             <span className="m">
-              {selectedFile ? `Ready to scan: ${selectedFile}` : "Drop a file here"}
+              {uploading
+                ? `Uploading and scanning… ${uploadProgress}%`
+                : scanResult
+                  ? `Scanned: ${scanResult.file.name}`
+                  : "Drop a file here"}
             </span>
             <span className="xs muted">
-              Or pick one. It goes to quarantine and is scanned first.
+              Goes straight to your private quarantine bucket in Cloud Storage first.
             </span>
             <input
               ref={fileInputRef}
               type="file"
               className="visually-hidden"
               aria-label="Choose a file to scan"
-              onChange={handleFileChange}
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) void runUpload(file)
+                e.target.value = ""
+              }}
             />
             <Button
-              label={selectedFile ? "Choose another file" : "Choose file"}
+              label={scanResult ? "Upload another file" : "Choose file"}
               variant="secondary"
               size="md"
+              disabled={uploading}
               onClick={() => fileInputRef.current?.click()}
             />
           </div>
@@ -161,14 +233,14 @@ export default function OnboardingPage() {
 
         {step === 2 ? (
           <div className="col" style={{ gap: 10 }}>
-            {AI_MODES.map((item, idx) => {
-              const selected = mode === idx
+            {AI_MODES.map((item) => {
+              const selected = aiMode === item.value
               return (
                 <button
-                  key={item.label}
+                  key={item.value}
                   type="button"
                   aria-pressed={selected}
-                  onClick={() => setMode(idx)}
+                  onClick={() => setAiMode(item.value)}
                   className="glass-soft row"
                   style={{
                     textAlign: "left",
@@ -198,35 +270,77 @@ export default function OnboardingPage() {
         ) : null}
 
         {step === 3 ? (
-          <div className="col" style={{ gap: 12 }}>
-            <div
-              className="glass-soft row"
-              style={{ borderRadius: 16, padding: 16, gap: 14 }}
-            >
-              <FileTile ext={fileExt} tone={2} size={40} />
-              <div className="grow col" style={{ gap: 2 }}>
-                <span className="m">{displayFileName}</span>
-                <span className="sm muted">
-                  1 sensitive item found: ID number
-                </span>
+          scanResult ? (
+            <div className="col" style={{ gap: 12 }}>
+              <div
+                className="glass-soft row"
+                style={{ borderRadius: 16, padding: 16, gap: 14 }}
+              >
+                <FileTile
+                  ext={extractExt(scanResult.file.name)}
+                  tone={scanResult.findings.length > 0 || scanResult.blockedReason ? 2 : 0}
+                  size={40}
+                />
+                <div className="grow col" style={{ gap: 2 }}>
+                  <span className="m">{scanResult.file.name}</span>
+                  <span className="sm muted">
+                    {scanResult.blockedReason
+                      ? scanResult.blockedReason
+                      : scanResult.findings.length > 0
+                        ? `${scanResult.findings.length} sensitive item(s) found and masked`
+                        : "No sensitive identifiers found"}
+                  </span>
+                </div>
+                <Chip
+                  label={
+                    scanResult.blockedReason
+                      ? "Blocked"
+                      : scanResult.findings.length > 0
+                        ? "Flagged"
+                        : "Clean"
+                  }
+                  tone={
+                    scanResult.blockedReason || scanResult.findings.length > 0
+                      ? "accent"
+                      : "clear"
+                  }
+                />
               </div>
-              <Chip label="Flagged" tone="accent" />
+              <div
+                className="glass-soft row"
+                style={{ borderRadius: 16, padding: 16, gap: 14 }}
+              >
+                <div className="tile n">
+                  <Icon
+                    glyph={scanResult.blockedReason ? "warn" : "check"}
+                    size={18}
+                  />
+                </div>
+                <div className="grow col" style={{ gap: 2 }}>
+                  <span className="m">
+                    {scanResult.blockedReason
+                      ? "Malware test blocked in quarantine"
+                      : "No malware found"}
+                  </span>
+                  <span className="sm muted">
+                    {scanResult.blockedReason
+                      ? "Quarantine object deleted automatically."
+                      : "Promoted to your private clean bucket."}
+                  </span>
+                </div>
+              </div>
             </div>
+          ) : (
             <div
-              className="glass-soft row"
-              style={{ borderRadius: 16, padding: 16, gap: 14 }}
+              className="glass-soft col center"
+              style={{ borderRadius: 16, padding: 28, gap: 6 }}
             >
-              <div className="tile n">
-                <Icon glyph="check" size={18} />
-              </div>
-              <div className="grow col" style={{ gap: 2 }}>
-                <span className="m">No malware found</span>
-                <span className="sm muted">
-                  Moved out of quarantine in 3 seconds
-                </span>
-              </div>
+              <span className="m">You are ready to go</span>
+              <span className="sm muted">
+                AI preference saved ({aiMode}). Upload any file anytime from Drive.
+              </span>
             </div>
-          </div>
+          )
         ) : null}
 
         <div className="row between">
@@ -240,12 +354,29 @@ export default function OnboardingPage() {
           ) : (
             <span />
           )}
-          <Button
-            label={step === 3 ? "Open my drive" : "Continue"}
-            variant="primary"
-            size="md"
-            onClick={handleNext}
-          />
+          <div className="row" style={{ gap: 8 }}>
+            {step === 1 && !scanResult ? (
+              <Button
+                label="Skip upload"
+                variant="ghost"
+                size="md"
+                onClick={() => setStep(2)}
+              />
+            ) : null}
+            <Button
+              label={
+                savingMode
+                  ? "Saving…"
+                  : step === 3
+                    ? "Open my drive"
+                    : "Continue"
+              }
+              variant="primary"
+              size="md"
+              disabled={uploading || savingMode}
+              onClick={() => void handleNext()}
+            />
+          </div>
         </div>
       </div>
     </div>

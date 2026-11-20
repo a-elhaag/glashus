@@ -352,10 +352,15 @@ export interface FieldProps {
   onChange?: React.ChangeEventHandler<HTMLInputElement>
   className?: string
   id?: string
+  name?: string
   autoComplete?: string
   required?: boolean
+  spellCheck?: boolean
+  enterKeyHint?: React.HTMLAttributes<HTMLInputElement>["enterKeyHint"]
+  minLength?: number
   inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"]
   maxLength?: number
+  "aria-invalid"?: boolean
   style?: React.CSSProperties
 }
 
@@ -369,10 +374,15 @@ export function Field({
   onChange,
   className,
   id,
+  name,
   autoComplete,
   required,
+  spellCheck,
+  enterKeyHint,
+  minLength,
   inputMode,
   maxLength,
+  "aria-invalid": ariaInvalid,
   style,
 }: FieldProps) {
   const generatedId = React.useId()
@@ -390,13 +400,18 @@ export function Field({
       </label>
       <input
         id={inputId}
+        name={name ?? inputId}
         className="input"
         type={type}
         placeholder={placeholder}
         autoComplete={autoComplete}
         required={required}
+        spellCheck={spellCheck}
+        enterKeyHint={enterKeyHint}
+        minLength={minLength}
         inputMode={inputMode}
         maxLength={maxLength}
+        aria-invalid={ariaInvalid}
         aria-describedby={note ? noteId : undefined}
         {...(isControlled
           ? { value, onChange }
@@ -434,7 +449,6 @@ const SIDEBAR_ITEMS: SidebarItem[] = [
     g: "link",
     label: "Shared by me",
     href: "Shared.dc.html",
-    count: "9",
   },
   { k: "exposure", g: "graph", label: "Exposure map", href: "Exposure.dc.html" },
   { k: "scan", g: "shield", label: "Scan report", href: "Scan.dc.html" },
@@ -451,13 +465,19 @@ export interface SidebarProps {
   className?: string
   storageText?: string
   storagePercent?: number
+  sharedCount?: number
+  userEmail?: string | null
+  onSignOut?: () => void
 }
 
 export function Sidebar({
   active = "drive",
   className,
-  storageText = "3.2 of 15 GB",
-  storagePercent = 21,
+  storageText = "0 B of 10 GB",
+  storagePercent = 0,
+  sharedCount,
+  userEmail,
+  onSignOut,
 }: SidebarProps) {
   return (
     <nav
@@ -528,7 +548,9 @@ export function Sidebar({
           >
             <Icon glyph={item.g} size={16} />
             <span className="grow">{item.label}</span>
-            {item.count ? (
+            {item.k === "shared" && sharedCount !== undefined && sharedCount > 0 ? (
+              <span className="xs muted">{sharedCount}</span>
+            ) : item.count ? (
               <span className="xs muted">{item.count}</span>
             ) : null}
           </a>
@@ -552,6 +574,23 @@ export function Sidebar({
           <Icon glyph="sliders" size={16} />
           <span className="grow">Settings</span>
         </a>
+        {onSignOut ? (
+          <button
+            type="button"
+            className="nav"
+            onClick={onSignOut}
+            style={{
+              border: 0,
+              background: "transparent",
+              textAlign: "left",
+              width: "100%",
+              cursor: "pointer",
+            }}
+          >
+            <Icon glyph="logout" size={16} />
+            <span className="grow ell">{userEmail || "Sign out"}</span>
+          </button>
+        ) : null}
         <div
           className="glass-soft"
           style={{
@@ -567,7 +606,7 @@ export function Sidebar({
             <span>{storageText}</span>
           </div>
           <div className="bar">
-            <i style={{ width: `${storagePercent}%` }} />
+            <i style={{ width: `${Math.min(100, Math.max(0, storagePercent))}%` }} />
           </div>
         </div>
       </div>

@@ -80,6 +80,126 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateMeRequest"];
+                };
+            };
+            responses: {
+                /** @description Updated user profile */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["UserProfile"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/v1/exposure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Live exposure score and actionable exposure risks */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ExposureSummaryResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description JSON export manifest of all user Drive metadata */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ExportManifestResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -108,7 +228,7 @@ export interface paths {
                         "application/json": components["schemas"]["FolderListResponse"];
                     };
                 };
-                /** @description Missing or invalid Firebase JWT */
+                /** @description Unauthorized */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -142,16 +262,7 @@ export interface paths {
                         "application/json": components["schemas"]["Folder"];
                     };
                 };
-                /** @description Validation error */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                /** @description Missing or invalid Firebase JWT */
+                /** @description Unauthorized */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -168,6 +279,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/folders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Folder deleted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OkResponse"];
+                    };
+                };
+                /** @description Folder not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateFolderRequest"];
+                };
+            };
+            responses: {
+                /** @description Folder updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Folder"];
+                    };
+                };
+                /** @description Folder not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
     "/v1/files": {
         parameters: {
             query?: never;
@@ -179,6 +370,7 @@ export interface paths {
             parameters: {
                 query?: {
                     folderId?: string;
+                    trashed?: "true" | "false";
                 };
                 header?: never;
                 path?: never;
@@ -186,7 +378,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Non-trashed files owned by the authenticated user */
+                /** @description Files owned by the authenticated user */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -195,7 +387,7 @@ export interface paths {
                         "application/json": components["schemas"]["FileListResponse"];
                     };
                 };
-                /** @description Missing or invalid Firebase JWT */
+                /** @description Unauthorized */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -208,6 +400,996 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/files/upload-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RequestUploadUrlRequest"];
+                };
+            };
+            responses: {
+                /** @description 60-second signed upload URL targeting quarantine bucket */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RequestUploadUrlResponse"];
+                    };
+                };
+                /** @description Storage quota exceeded or invalid input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/files/{id}/complete-upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Quarantine scan finished and file promoted or blocked */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CompleteUploadResponse"];
+                    };
+                };
+                /** @description File record or uploaded object not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/files/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description File permanently deleted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OkResponse"];
+                    };
+                };
+                /** @description File not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateFileRequest"];
+                };
+            };
+            responses: {
+                /** @description File updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FileRecord"];
+                    };
+                };
+                /** @description File not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/v1/files/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description File restored from trash */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FileRecord"];
+                    };
+                };
+                /** @description File not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/trash/empty": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description All trashed files permanently removed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EmptyTrashResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/files/{id}/download-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: {
+                    inline?: "true" | "false";
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 60-second signed download URL for clean file */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DownloadUrlResponse"];
+                    };
+                };
+                /** @description File not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Monthly download cap reached */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/files/{id}/findings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Masked sensitive findings for a file */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FileFindingsResponse"];
+                    };
+                };
+                /** @description File not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/files/{id}/findings/{findingId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    findingId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateFindingRequest"];
+                };
+            };
+            responses: {
+                /** @description Finding updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Finding"];
+                    };
+                };
+                /** @description File or finding not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/v1/files/{id}/rescan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Re-ran deterministic scanner on file */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FileFindingsResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/files/{id}/redacted-copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Generated redacted copy in clean bucket */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FileRecord"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/shares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Active and recent share links created by the user */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ShareListResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateShareRequest"];
+                };
+            };
+            responses: {
+                /** @description Share link created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CreateShareResponse"];
+                    };
+                };
+                /** @description Original sharing blocked or ownership failure */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/shares/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Share link revoked */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OkResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/shares/revoke-public": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Revoked all active public links */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RevokePublicResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/shares/{shareId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    shareId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Public metadata for a share link */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PublicShareInfoResponse"];
+                    };
+                };
+                /** @description Share link not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/shares/{shareId}/unlock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    shareId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["UnlockShareRequest"];
+                };
+            };
+            responses: {
+                /** @description Share unlocked and 60s signed download URL issued */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["UnlockShareResponse"];
+                    };
+                };
+                /** @description Invalid PIN or link revoked/expired/limit reached */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Share not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Owner monthly download cap reached */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Audit events for the authenticated user */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AuditListResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ai/log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description AI access log entries for the authenticated user */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AiLogListResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/canaries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Canary bait files and trigger history */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CanaryListResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateCanaryRequest"];
+                };
+            };
+            responses: {
+                /** @description Canary created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Canary"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/canaries/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateCanaryRequest"];
+                };
+            };
+            responses: {
+                /** @description Canary updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Canary"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/v1/canaries/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Simulated test trigger logged */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CanaryTrigger"];
+                    };
+                };
+                /** @description Canary is paused */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ai/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AskFilesRequest"];
+                };
+            };
+            responses: {
+                /** @description Consent-gated grounded response across consented Drive files */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AskFilesResponse"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -241,17 +1423,31 @@ export interface components {
             uid: string;
             /** @example Anas Abuelhaag */
             name: string;
+            /** @example anas@example.com */
+            email: string;
             /**
-             * Format: email
+             * @default
              * @example anas@example.com
              */
-            email: string;
+            alertEmail: string;
             plan: components["schemas"]["Plan"];
             /** @example 1048576 */
             bytesUsed: number;
             /** @example 10737418240 */
             storageQuotaBytes: number;
             aiMode: components["schemas"]["AiMode"];
+            /** @default true */
+            massAlerts: boolean;
+            /** @default true */
+            canaryAlerts: boolean;
+            /** @default false */
+            weeklySummary: boolean;
+            /** @default true */
+            requirePinOnPublic: boolean;
+            /** @default 7 */
+            defaultExpiryDays: number;
+            /** @default  */
+            vaultHint: string;
             /** Format: date-time */
             createdAt: string;
         };
@@ -278,8 +1474,43 @@ export interface components {
             /** @example Missing or invalid Bearer token. */
             message: string;
         };
-        FolderListResponse: {
+        UpdateMeRequest: {
+            name?: string;
+            alertEmail?: string | "";
+            aiMode?: components["schemas"]["AiMode"];
+            massAlerts?: boolean;
+            canaryAlerts?: boolean;
+            weeklySummary?: boolean;
+            requirePinOnPublic?: boolean;
+            defaultExpiryDays?: number;
+            vaultHint?: string;
+        };
+        ExposureSummaryResponse: {
+            score: number;
+            publicLinks: number;
+            sensitiveFindings: number;
+            armedCanaries: number;
+            risks: components["schemas"]["ExposureRisk"][];
+        };
+        ExposureRisk: {
+            id: string;
+            /** @enum {string} */
+            kind: "public_link" | "never_expires" | "sensitive_shared";
+            fileId: string | null;
+            shareId: string | null;
+            title: string;
+            detail: string;
+            actionLabel: string;
+        };
+        ExportManifestResponse: {
+            /** Format: date-time */
+            exportedAt: string;
+            user: components["schemas"]["UserProfile"];
             folders: components["schemas"]["Folder"][];
+            files: components["schemas"]["FileRecord"][];
+            shares: components["schemas"]["ShareRecord"][];
+            auditCount: number;
+            aiReadCount: number;
         };
         Folder: {
             /** @example fld_root */
@@ -298,21 +1529,6 @@ export interface components {
         };
         /** @enum {string} */
         AiConsent: "off" | "ask" | "allow";
-        CreateFolderRequest: {
-            /** @example Receipts */
-            name: string;
-            /**
-             * @default null
-             * @example null
-             */
-            parentId: string | null;
-            aiConsent?: components["schemas"]["AiConsent"];
-            /** @default false */
-            vault: boolean;
-        };
-        FileListResponse: {
-            files: components["schemas"]["FileRecord"][];
-        };
         FileRecord: {
             /** @example fil_01JABC */
             id: string;
@@ -330,11 +1546,22 @@ export interface components {
             exposure: components["schemas"]["ExposureLevel"];
             /** @default 0 */
             findingCount: number;
+            /** @default false */
+            originalBlocked: boolean;
+            /** @default false */
+            hasRedactedCopy: boolean;
             /**
              * Format: date-time
              * @default null
              */
             trashedAt: string | null;
+            /**
+             * Format: date-time
+             * @default null
+             */
+            purgeAt: string | null;
+            /** @default null */
+            sha256: string | null;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -344,6 +1571,284 @@ export interface components {
         ScanStatus: "quarantined" | "clean" | "blocked";
         /** @enum {string} */
         ExposureLevel: "private" | "shared" | "link" | "public";
+        ShareRecord: {
+            id: string;
+            fileId: string;
+            fileName: string;
+            fileMime: string;
+            fileSize: number;
+            ownerUid: string;
+            audience: components["schemas"]["ShareAudience"];
+            /** @default null */
+            recipientEmail: string | null;
+            /** Format: date-time */
+            expiresAt: string | null;
+            maxDownloads: number | null;
+            downloads: number;
+            hasPin: boolean;
+            redacted: boolean;
+            /**
+             * Format: date-time
+             * @default null
+             */
+            revokedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** @enum {string} */
+        ShareAudience: "anyone" | "specific_people";
+        FolderListResponse: {
+            folders: components["schemas"]["Folder"][];
+        };
+        CreateFolderRequest: {
+            /** @example Receipts */
+            name: string;
+            /**
+             * @default null
+             * @example null
+             */
+            parentId: string | null;
+            aiConsent?: components["schemas"]["AiConsent"];
+            /** @default false */
+            vault: boolean;
+        };
+        UpdateFolderRequest: {
+            name?: string;
+            parentId?: string | null;
+            aiConsent?: components["schemas"]["AiConsent"];
+            vault?: boolean;
+        };
+        OkResponse: {
+            /** @enum {boolean} */
+            ok: true;
+        };
+        FileListResponse: {
+            files: components["schemas"]["FileRecord"][];
+        };
+        RequestUploadUrlResponse: {
+            fileId: string;
+            /** Format: uri */
+            uploadUrl: string;
+            /** @example 60 */
+            expiresInSeconds: number;
+        };
+        RequestUploadUrlRequest: {
+            name: string;
+            /** @default null */
+            folderId: string | null;
+            /** @default application/octet-stream */
+            mime: string;
+            size: number;
+        };
+        CompleteUploadResponse: {
+            file: components["schemas"]["FileRecord"];
+            findings: components["schemas"]["Finding"][];
+            blockedReason: string | null;
+        };
+        Finding: {
+            id: string;
+            /** @example IBAN */
+            type: string;
+            /** @example Line 14 */
+            location: string;
+            /** @example DE89 •••• •••• 3000 */
+            maskedValue: string;
+            /**
+             * @example regex
+             * @enum {string}
+             */
+            detector: "dlp" | "regex" | "entropy";
+            /** @default false */
+            safe: boolean;
+        };
+        UpdateFileRequest: {
+            name?: string;
+            folderId?: string | null;
+            trashed?: boolean;
+            originalBlocked?: boolean;
+        };
+        EmptyTrashResponse: {
+            deletedCount: number;
+        };
+        DownloadUrlResponse: {
+            fileId: string;
+            name: string;
+            mime: string;
+            /** Format: uri */
+            downloadUrl: string;
+            /** @example 60 */
+            expiresInSeconds: number;
+        };
+        FileFindingsResponse: {
+            file: components["schemas"]["FileRecord"];
+            findings: components["schemas"]["Finding"][];
+        };
+        UpdateFindingRequest: {
+            safe: boolean;
+        };
+        ShareListResponse: {
+            shares: components["schemas"]["ShareRecord"][];
+        };
+        CreateShareResponse: {
+            share: components["schemas"]["ShareRecord"];
+            pin: string | null;
+            sharePath: string;
+        };
+        CreateShareRequest: {
+            fileId: string;
+            audience?: components["schemas"]["ShareAudience"];
+            /** Format: email */
+            recipientEmail?: string | null;
+            /** @default 7 */
+            expiryDays: number | null;
+            /** @default 5 */
+            maxDownloads: number | null;
+            /** @default true */
+            requirePin: boolean;
+            /** @default true */
+            redacted: boolean;
+        };
+        RevokePublicResponse: {
+            revokedCount: number;
+        };
+        PublicShareInfoResponse: {
+            id: string;
+            fileName: string;
+            fileMime: string;
+            fileSize: number;
+            ownerName: string;
+            redacted: boolean;
+            hasPin: boolean;
+            /** Format: date-time */
+            expiresAt: string | null;
+            downloadsRemaining: number | null;
+            expired: boolean;
+            revoked: boolean;
+            limitReached: boolean;
+        };
+        UnlockShareResponse: {
+            /** Format: uri */
+            downloadUrl: string;
+            expiresInSeconds: number;
+            downloadsRemaining: number | null;
+        };
+        UnlockShareRequest: {
+            pin?: string;
+        };
+        AuditListResponse: {
+            events: components["schemas"]["AuditEvent"][];
+        };
+        AuditEvent: {
+            id: string;
+            /** @example file.upload */
+            action: string;
+            category: components["schemas"]["AuditCategory"];
+            title: string;
+            /** @default  */
+            detail: string;
+            /** @example fil_01JABC */
+            target: string;
+            actor: string;
+            /** @default null */
+            device: string | null;
+            /** @default null */
+            ip: string | null;
+            /** Format: date-time */
+            time: string;
+        };
+        /** @enum {string} */
+        AuditCategory: "files" | "sharing" | "ai" | "security";
+        AiLogListResponse: {
+            reads: components["schemas"]["AiLogEntry"][];
+            weeklyReads: number;
+            totalMasked: number;
+        };
+        AiLogEntry: {
+            id: string;
+            fileId: string;
+            fileName: string;
+            /** @default Drive */
+            folderName: string;
+            /** @default ask */
+            consentMode: string;
+            /** @example ask_my_files */
+            purpose: string;
+            sentSummary: string;
+            maskedCount: number;
+            /** @example gemini-2.5-flash */
+            model: string;
+            /** Format: date-time */
+            time: string;
+        };
+        CanaryListResponse: {
+            canaries: components["schemas"]["Canary"][];
+            history: components["schemas"]["CanaryTrigger"][];
+        };
+        Canary: {
+            id: string;
+            ownerUid: string;
+            fileId: string;
+            name: string;
+            /** @default null */
+            folderId: string | null;
+            /** @default Drive */
+            folderName: string;
+            status: components["schemas"]["CanaryStatus"];
+            channel?: components["schemas"]["CanaryChannel"];
+            /** @default Never opened. Checked every request. */
+            detail: string;
+            /** Format: date-time */
+            lastTriggeredAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** @enum {string} */
+        CanaryStatus: "armed" | "triggered" | "paused";
+        /**
+         * @default both
+         * @enum {string}
+         */
+        CanaryChannel: "email" | "push" | "both";
+        CanaryTrigger: {
+            id: string;
+            canaryId: string;
+            canaryName: string;
+            /** Format: date-time */
+            when: string;
+            source: string;
+            /** @enum {string} */
+            result: "alert_sent" | "ignored";
+        };
+        CreateCanaryRequest: {
+            name: string;
+            /** @default null */
+            folderId: string | null;
+            channel?: components["schemas"]["CanaryChannel"];
+        };
+        UpdateCanaryRequest: {
+            /** @enum {string} */
+            status?: "armed" | "paused";
+            channel?: components["schemas"]["CanaryChannel"];
+        };
+        AskFilesResponse: {
+            answer: string;
+            citations: components["schemas"]["AskCitation"][];
+            maskedCount: number;
+            ignoredCount: number;
+            consentBlocked: boolean;
+            consentMessage: string | null;
+        };
+        AskCitation: {
+            fileId: string;
+            fileName: string;
+            detail: string;
+            excerpt: string;
+        };
+        AskFilesRequest: {
+            question: string;
+            /** @default null */
+            folderId: string | null;
+        };
     };
     responses: never;
     parameters: never;

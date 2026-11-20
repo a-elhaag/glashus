@@ -9,218 +9,113 @@ import {
   Icon,
   PageHead,
   Seg,
-  Sidebar,
-  resolveBoardHref,
 } from "@workspace/ui/components/glashus"
-
-type RiskItem = {
-  id: "tax" | "env" | "exp"
-  title: string
-  detail: string
-  action: string
-  msg: string
-}
-
-type VisibilityTone = "clear" | "neutral" | "accent"
-
-type RecentFileRow = {
-  id: string
-  name: string
-  ext: string
-  vis: string
-  visTone: VisibilityTone
-  tone: 0 | 1 | 2
-  findings: string
-  flagged: boolean
-  isShared: boolean
-  modified: string
-  size: string
-}
-
-const ALL_RISKS: RiskItem[] = [
-  {
-    id: "tax",
-    title: "tax-return-2025.pdf is public",
-    detail: "Contains a national ID and an IBAN. Anyone with the link can open it.",
-    action: "Share redacted copy",
-    msg: "Public link replaced with a redacted copy",
-  },
-  {
-    id: "env",
-    title: "api-config.env holds a live API key",
-    detail: "Shared with 1 person. Revoke access and rotate the key.",
-    action: "Revoke access",
-    msg: "Access revoked for 1 person",
-  },
-  {
-    id: "exp",
-    title: "4 links never expire",
-    detail: "Oldest was created 5 months ago and still works.",
-    action: "Expire in 7 days",
-    msg: "4 links now expire in 7 days",
-  },
-]
-
-const VISIBILITY_PRESETS: Record<
-  "priv" | "shared" | "link" | "pub",
-  { vis: string; visTone: VisibilityTone; tone: 0 | 1 | 2; isShared: boolean }
-> = {
-  priv: { vis: "Private", visTone: "clear", tone: 0, isShared: false },
-  shared: { vis: "Shared", visTone: "neutral", tone: 1, isShared: true },
-  link: { vis: "Link · 2 days left", visTone: "neutral", tone: 1, isShared: true },
-  pub: { vis: "Public", visTone: "accent", tone: 2, isShared: true },
-}
+import { AppSidebar } from "@/components/app-sidebar"
+import { useAuth } from "@/components/providers"
+import { glashusApi } from "@/lib/api"
+import {
+  exposureToUi,
+  extractExt,
+  formatBytes,
+  formatShortDate,
+} from "@/lib/format"
+import {
+  unwrapApi,
+  useExposure,
+  useFiles,
+  useInvalidateDrive,
+  useMe,
+} from "@/lib/queries"
 
 export default function DriveHomePage() {
-  const [fixed, setFixed] = React.useState<string[]>([])
-  const [last, setLast] = React.useState<{ id: string; msg: string } | null>(null)
+  const { user } = useAuth()
+  const meQuery = useMe()
+  const exposureQuery = useExposure()
+  const filesQuery = useFiles({ trashed: false })
+  const invalidateDrive = useInvalidateDrive()
+
   const [filter, setFilter] = React.useState<"All" | "Shared" | "Flagged">("All")
   const [search, setSearch] = React.useState("")
+  const [fixingId, setFixingId] = React.useState<string | null>(null)
+  const [toastMsg, setToastMsg] = React.useState<string | null>(null)
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const fix = React.useCallback((id: string, msg: string) => {
-    setFixed((prev) => (prev.includes(id) ? prev : [...prev, id]))
-    setLast({ id, msg })
+  React.useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
   }, [])
 
-  const undo = React.useCallback(() => {
-    if (!last) return
-    const targetId = last.id
-    setFixed((prev) => prev.filter((x) => x !== targetId))
-    setLast(null)
-  }, [last])
+  const showToast = React.useCallback((msg: string) => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    setToastMsg(msg)
+    timerRef.current = setTimeout(() => setToastMsg(null), 4000)
+  }, [])
 
-  const risks = React.useMemo(
-    () => ALL_RISKS.filter((r) => !fixed.includes(r.id)),
-    [fixed]
-  )
+  const handleFixRisk = async (
+    riskId: string,
+    shareId: string | null,
+    title: string
+  ) => {
+    if (!shareId) return
+    setFixingId(riskId)
+    try {
+      unwrapApi(
+        await glashusApi.DELETE("/v1/shares/{id}", {
+          params: { path: { id: shareId } },
+        })
+      )
+      invalidateDrive()
+      showToast(`Resolved: ${title}`)
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Could not resolve risk")
+    } finally {
+      setFixingId(null)
+    }
+  }
 
-  const taxFixed = fixed.includes("tax")
-  const envFixed = fixed.includes("env")
-  const expFixed = fixed.includes("exp")
+  const displayName =
+    meQuery.data?.user.name ||
+    user?.displayName ||
+    user?.email?.split("@")[0] ||
+    "there"
+  const score = exposureQuery.data?.score ?? 100
+  const publicLinks = exposureQuery.data?.publicLinks ?? 0
+  const sensitiveFindings = exposureQuery.data?.sensitiveFindings ?? 0
+  const armedCanaries = exposureQuery.data?.armedCanaries ?? 0
+  const risks = exposureQuery.data?.risks ?? []
 
-  const score =
-    62 + (taxFixed ? 16 : 0) + (envFixed ? 14 : 0) + (expFixed ? 8 : 0)
-  const scoreWidth = `${score}%`
-  const gapWidth = `${100 - score}%`
-  const left = risks.length
-  const scoreLine =
-    left === 0
-      ? "All clear. Nothing is exposed beyond the people you chose."
-      : `${left} ${left === 1 ? "thing needs" : "things need"} your attention. Fixing them takes under a minute.`
-
-  const publicCount = taxFixed ? 0 : 1
-  const findingCount = taxFixed ? 2 : 4
-
-  const files = React.useMemo<RecentFileRow[]>(() => {
-    const makeRow = (
-      id: string,
-      name: string,
-      ext: string,
-      preset: (typeof VISIBILITY_PRESETS)[keyof typeof VISIBILITY_PRESETS],
-      findings: string,
-      flagged: boolean,
-      modified: string,
-      size: string
-    ): RecentFileRow => ({
-      id,
-      name,
-      ext,
-      vis: preset.vis,
-      visTone: preset.visTone,
-      tone: preset.tone,
-      isShared: preset.isShared,
-      findings,
-      flagged,
-      modified,
-      size,
-    })
-
-    return [
-      makeRow(
-        "tax",
-        "tax-return-2025.pdf",
-        "PDF",
-        taxFixed ? VISIBILITY_PRESETS.link : VISIBILITY_PRESETS.pub,
-        taxFixed ? "Redacted copy shared" : "National ID, IBAN",
-        !taxFixed,
-        "Oct 14",
-        "1.2 MB"
-      ),
-      makeRow(
-        "env",
-        "api-config.env",
-        "ENV",
-        envFixed ? VISIBILITY_PRESETS.priv : VISIBILITY_PRESETS.shared,
-        "API key",
-        true,
-        "Nov 2",
-        "2 KB"
-      ),
-      makeRow(
-        "pitch",
-        "q3-pitch-deck.pdf",
-        "PDF",
-        VISIBILITY_PRESETS.link,
-        "None",
-        false,
-        "Nov 9",
-        "8.4 MB"
-      ),
-      makeRow(
-        "passport",
-        "passport-scan.jpg",
-        "JPG",
-        VISIBILITY_PRESETS.priv,
-        "ID number",
-        true,
-        "Sep 30",
-        "3.1 MB"
-      ),
-      makeRow(
-        "thesis",
-        "thesis-draft-v4.docx",
-        "DOC",
-        VISIBILITY_PRESETS.priv,
-        "None",
-        false,
-        "Nov 12",
-        "640 KB"
-      ),
-      makeRow(
-        "photos",
-        "team-photos.zip",
-        "ZIP",
-        VISIBILITY_PRESETS.shared,
-        "None",
-        false,
-        "Aug 21",
-        "214 MB"
-      ),
-    ]
-  }, [taxFixed, envFixed])
-
+  const files = React.useMemo(() => filesQuery.data ?? [], [filesQuery.data])
   const filteredFiles = React.useMemo(() => {
     const query = search.trim().toLowerCase()
     return files.filter((f) => {
-      if (filter === "Shared" && !f.isShared) return false
-      if (filter === "Flagged" && !f.flagged) return false
+      const isShared = f.exposure !== "private"
+      const isFlagged = f.findingCount > 0 || f.scanStatus === "blocked"
+      if (filter === "Shared" && !isShared) return false
+      if (filter === "Flagged" && !isFlagged) return false
       if (query) {
-        const hay = `${f.name} ${f.vis} ${f.findings}`.toLowerCase()
+        const hay = `${f.name} ${f.exposure} ${f.scanStatus}`.toLowerCase()
         if (!hay.includes(query)) return false
       }
       return true
     })
   }, [files, filter, search])
 
+  const scoreLine =
+    risks.length === 0
+      ? "All clear. Nothing is exposed beyond the people you chose."
+      : `${risks.length} ${risks.length === 1 ? "thing needs" : "things need"} your attention.`
+
   return (
     <div className="app" style={{ minHeight: 900 }}>
-      <Sidebar active="drive" />
+      <AppSidebar active="drive" />
       <main className="main">
         <PageHead
-          title="Good afternoon, Anas"
+          title={`Welcome, ${displayName}`}
           sub="Here is who can see your files right now."
           cta="Upload"
           ctaIcon="upload"
+          ctaHref="/drive/upload"
           searchValue={search}
           onSearchChange={setSearch}
         />
@@ -251,10 +146,15 @@ export default function DriveHomePage() {
               </span>
             </div>
             <div className="bar" style={{ display: "flex" }}>
-              <i style={{ width: scoreWidth, transition: "width 280ms ease-out" }} />
               <i
                 style={{
-                  width: gapWidth,
+                  width: `${score}%`,
+                  transition: "width 280ms ease-out",
+                }}
+              />
+              <i
+                style={{
+                  width: `${100 - score}%`,
                   background: "var(--accent)",
                   transition: "width 280ms ease-out",
                 }}
@@ -272,18 +172,20 @@ export default function DriveHomePage() {
             >
               <div className="col" style={{ gap: 2 }}>
                 <span style={{ fontSize: 20, fontWeight: 600 }}>
-                  {publicCount}
+                  {publicLinks}
                 </span>
                 <span className="xs muted">Public links</span>
               </div>
               <div className="col" style={{ gap: 2 }}>
                 <span style={{ fontSize: 20, fontWeight: 600 }}>
-                  {findingCount}
+                  {sensitiveFindings}
                 </span>
                 <span className="xs muted">Sensitive finds</span>
               </div>
               <div className="col" style={{ gap: 2 }}>
-                <span style={{ fontSize: 20, fontWeight: 600 }}>2</span>
+                <span style={{ fontSize: 20, fontWeight: 600 }}>
+                  {armedCanaries}
+                </span>
                 <span className="xs muted">Canaries armed</span>
               </div>
             </div>
@@ -307,10 +209,7 @@ export default function DriveHomePage() {
                 />
                 Needs attention
               </span>
-              <Link
-                href={resolveBoardHref("Activity.dc.html")}
-                className="sm muted"
-              >
+              <Link href="/ai/activity" className="sm muted">
                 View all
               </Link>
             </div>
@@ -323,7 +222,7 @@ export default function DriveHomePage() {
                   gap: 14,
                   padding: "12px 16px",
                   borderRadius: 16,
-                  margin: "4px 0",
+                  margin: "4px 8px",
                 }}
               >
                 <div className="tile">
@@ -334,15 +233,18 @@ export default function DriveHomePage() {
                   <span className="sm muted">{r.detail}</span>
                 </div>
                 <Button
-                  label={r.action}
+                  label={fixingId === r.id ? "Fixing…" : r.actionLabel}
                   variant="primary"
                   size="sm"
-                  onClick={() => fix(r.id, r.msg)}
+                  disabled={fixingId === r.id || !r.shareId}
+                  onClick={() =>
+                    void handleFixRisk(r.id, r.shareId, r.title)
+                  }
                 />
               </div>
             ))}
 
-            {left === 0 ? (
+            {risks.length === 0 ? (
               <div
                 className="col center"
                 style={{ padding: "40px 16px", gap: 6 }}
@@ -388,72 +290,107 @@ export default function DriveHomePage() {
                 <span />
               </div>
 
-              {filteredFiles.map((f) => (
-                <div
-                  key={f.id}
-                  className="trow"
-                  style={{
-                    gridTemplateColumns: "2.4fr 1.3fr 1.6fr 1fr 0.7fr 40px",
-                  }}
-                >
-                  <div className="row" style={{ minWidth: 0 }}>
-                    <FileTile ext={f.ext} tone={f.tone} size={36} />
-                    <Link
-                      href={resolveBoardHref("Viewer.dc.html")}
-                      className="ell m"
-                    >
-                      {f.name}
-                    </Link>
-                  </div>
-                  <div>
-                    <Chip label={f.vis} tone={f.visTone} />
-                  </div>
-                  <span
-                    className="sm"
-                    style={{
-                      color: f.flagged ? "var(--accent)" : "var(--ink3)",
-                      fontWeight: f.flagged ? 500 : 400,
-                    }}
-                  >
-                    {f.findings}
-                  </span>
-                  <span className="sm muted">{f.modified}</span>
-                  <span className="sm muted">{f.size}</span>
-                  <Button
-                    label="Share"
-                    variant="ghost"
-                    size="sm"
-                    icon="share"
-                    iconOnly
-                    href="Share.dc.html"
-                  />
+              {filesQuery.isLoading ? (
+                <div className="col center muted" style={{ padding: "36px 20px" }}>
+                  <span className="sm">Loading your files…</span>
                 </div>
-              ))}
+              ) : filteredFiles.length > 0 ? (
+                filteredFiles.map((f) => {
+                  const vis = exposureToUi(f.exposure)
+                  const flagged = f.findingCount > 0 || f.scanStatus === "blocked"
+                  const findingsText =
+                    f.scanStatus === "blocked"
+                      ? "Blocked in quarantine"
+                      : f.scanStatus === "quarantined"
+                        ? "Scanning…"
+                        : f.findingCount > 0
+                          ? `${f.findingCount} masked finding${f.findingCount === 1 ? "" : "s"}`
+                          : f.hasRedactedCopy
+                            ? "Redacted copy ready"
+                            : "None"
 
-              {filteredFiles.length === 0 ? (
+                  return (
+                    <div
+                      key={f.id}
+                      className="trow"
+                      style={{
+                        gridTemplateColumns:
+                          "2.4fr 1.3fr 1.6fr 1fr 0.7fr 40px",
+                      }}
+                    >
+                      <div className="row" style={{ minWidth: 0 }}>
+                        <FileTile
+                          ext={extractExt(f.name)}
+                          tone={vis.tileTone}
+                          size={36}
+                        />
+                        <Link
+                          href={`/viewer?fileId=${encodeURIComponent(f.id)}`}
+                          className="ell m"
+                        >
+                          {f.name}
+                        </Link>
+                      </div>
+                      <div>
+                        <Chip label={vis.label} tone={vis.visTone} />
+                      </div>
+                      <span
+                        className="sm"
+                        style={{
+                          color: flagged ? "var(--accent)" : "var(--ink3)",
+                          fontWeight: flagged ? 500 : 400,
+                        }}
+                      >
+                        {findingsText}
+                      </span>
+                      <span className="sm muted">
+                        {formatShortDate(f.updatedAt)}
+                      </span>
+                      <span className="sm muted">{formatBytes(f.size)}</span>
+                      <Button
+                        label="Share"
+                        variant="ghost"
+                        size="sm"
+                        icon="share"
+                        iconOnly
+                        href={`/sharing/share?fileId=${encodeURIComponent(f.id)}`}
+                      />
+                    </div>
+                  )
+                })
+              ) : (
                 <div
                   className="col center muted"
-                  style={{ padding: "36px 20px", gap: 4 }}
+                  style={{ padding: "40px 20px", gap: 10 }}
                 >
-                  <span className="sm m">No files match this filter.</span>
-                  <span className="xs muted">
-                    Switch tabs or clear the search box to see all files.
+                  <span className="sm m">
+                    {files.length === 0
+                      ? "No files in your drive yet."
+                      : "No files match this filter."}
                   </span>
+                  <span className="xs muted">
+                    {files.length === 0
+                      ? "Upload a file to run quarantine malware and PII scanning."
+                      : "Switch tabs or clear the search box to see all files."}
+                  </span>
+                  {files.length === 0 ? (
+                    <Button
+                      label="Upload your first file"
+                      variant="primary"
+                      size="sm"
+                      icon="upload"
+                      href="/drive/upload"
+                    />
+                  ) : null}
                 </div>
-              ) : null}
+              )}
             </div>
           </div>
         </section>
 
-        {last ? (
+        {toastMsg ? (
           <div role="status" aria-live="polite" className="toast">
-            <span>{last.msg}</span>
-            <Button
-              label="Undo"
-              variant="secondary"
-              size="sm"
-              onClick={undo}
-            />
+            <span>{toastMsg}</span>
           </div>
         ) : null}
       </main>

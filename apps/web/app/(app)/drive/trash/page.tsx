@@ -7,59 +7,20 @@ import {
   FileTile,
   Icon,
   PageHead,
-  Sidebar,
-  resolveBoardHref,
 } from "@workspace/ui/components/glashus"
-
-type TrashItem = {
-  id: string
-  name: string
-  ext: string
-  daysLeft: string
-  progress: number
-}
-
-type ToastState = {
-  msg: string
-  undo?: () => void
-} | null
-
-const INITIAL_TRASH: TrashItem[] = [
-  {
-    id: "trash-contract",
-    name: "old-contract.pdf",
-    ext: "PDF",
-    daysLeft: "26 days",
-    progress: 13,
-  },
-  {
-    id: "trash-screenshot",
-    name: "screenshot-2026-10-02.png",
-    ext: "PNG",
-    daysLeft: "19 days",
-    progress: 37,
-  },
-  {
-    id: "trash-draft",
-    name: "draft-final-FINAL.docx",
-    ext: "DOC",
-    daysLeft: "11 days",
-    progress: 63,
-  },
-  {
-    id: "trash-backup",
-    name: "backup-2025.zip",
-    ext: "ZIP",
-    daysLeft: "3 days",
-    progress: 90,
-  },
-]
+import { AppSidebar } from "@/components/app-sidebar"
+import { glashusApi } from "@/lib/api"
+import { daysUntil, extractExt } from "@/lib/format"
+import { unwrapApi, useFiles, useInvalidateDrive } from "@/lib/queries"
 
 export default function TrashPage() {
+  const filesQuery = useFiles({ trashed: true })
+  const invalidateDrive = useInvalidateDrive()
+
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [items, setItems] = React.useState<TrashItem[]>(INITIAL_TRASH)
   const [search, setSearch] = React.useState("")
-  const [toast, setToast] = React.useState<ToastState>(null)
+  const [busyId, setBusyId] = React.useState<string | null>(null)
+  const [toastMsg, setToastMsg] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     return () => {
@@ -67,55 +28,60 @@ export default function TrashPage() {
     }
   }, [])
 
-  const showToast = React.useCallback((msg: string, undo?: () => void) => {
+  const showToast = React.useCallback((msg: string) => {
     if (timerRef.current) clearTimeout(timerRef.current)
-    setToast({ msg, undo })
-    timerRef.current = setTimeout(() => {
-      setToast(null)
-    }, 5000)
+    setToastMsg(msg)
+    timerRef.current = setTimeout(() => setToastMsg(null), 4000)
   }, [])
 
-  const restoreItem = React.useCallback(
-    (id: string) => {
-      const prev = items
-      const target = prev.find((x) => x.id === id)
-      if (!target) return
-      setItems(prev.filter((x) => x.id !== id))
-      showToast(`Restored ${target.name} to Drive`, () => {
-        setItems(prev)
-        setToast(null)
-      })
-    },
-    [items, showToast]
-  )
+  const restoreItem = async (id: string, name: string) => {
+    setBusyId(id)
+    try {
+      unwrapApi(
+        await glashusApi.POST("/v1/files/{id}/restore", {
+          params: { path: { id } },
+        })
+      )
+      invalidateDrive()
+      showToast(`Restored ${name} to Drive`)
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Restore failed")
+    } finally {
+      setBusyId(null)
+    }
+  }
 
-  const deleteForever = React.useCallback(
-    (id: string) => {
-      const prev = items
-      const target = prev.find((x) => x.id === id)
-      if (!target) return
-      setItems(prev.filter((x) => x.id !== id))
-      showToast(`Deleted ${target.name} forever`, () => {
-        setItems(prev)
-        setToast(null)
-      })
-    },
-    [items, showToast]
-  )
+  const deleteForever = async (id: string, name: string) => {
+    setBusyId(id)
+    try {
+      unwrapApi(
+        await glashusApi.DELETE("/v1/files/{id}", {
+          params: { path: { id } },
+        })
+      )
+      invalidateDrive()
+      showToast(`Deleted ${name} forever`)
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Delete failed")
+    } finally {
+      setBusyId(null)
+    }
+  }
 
-  const emptyTrash = React.useCallback(() => {
-    if (items.length === 0) return
-    const prev = items
-    setItems([])
-    showToast(
-      `Emptied ${prev.length} ${prev.length === 1 ? "item" : "items"} from trash`,
-      () => {
-        setItems(prev)
-        setToast(null)
-      }
-    )
-  }, [items, showToast])
+  const emptyTrash = async () => {
+    setBusyId("empty-all")
+    try {
+      const res = unwrapApi(await glashusApi.POST("/v1/trash/empty"))
+      invalidateDrive()
+      showToast(`Emptied ${res.deletedCount} item(s) from trash`)
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to empty trash")
+    } finally {
+      setBusyId(null)
+    }
+  }
 
+  const items = filesQuery.data ?? []
   const filteredItems = React.useMemo(() => {
     const query = search.trim().toLowerCase()
     if (!query) return items
@@ -124,13 +90,14 @@ export default function TrashPage() {
 
   return (
     <div className="app" style={{ minHeight: 900 }}>
-      <Sidebar active="trash" />
+      <AppSidebar active="trash" />
       <main className="main">
         <PageHead
           title="Trash"
           sub={`${items.length} ${items.length === 1 ? "item" : "items"} · self-destruct timers`}
           cta="Upload"
           ctaIcon="upload"
+          ctaHref="/drive/upload"
           searchValue={search}
           onSearchChange={setSearch}
         />
@@ -141,15 +108,14 @@ export default function TrashPage() {
         >
           <Icon glyph="info" size={16} />
           <span className="sm grow">
-            Items are deleted for good after 30 days. Nothing here counts toward
-            exposure.
+            Items are deleted for good after 30 days. Deleting forever frees your storage quota right away.
           </span>
           <Button
-            label="Empty trash"
+            label={busyId === "empty-all" ? "Emptying…" : "Empty trash"}
             variant="danger"
             size="sm"
-            disabled={items.length === 0}
-            onClick={emptyTrash}
+            disabled={items.length === 0 || busyId !== null}
+            onClick={() => void emptyTrash()}
           />
         </div>
 
@@ -169,45 +135,60 @@ export default function TrashPage() {
               <span />
             </div>
 
-            {filteredItems.map((item) => (
-              <div
-                key={item.id}
-                className="trow"
-                style={{ gridTemplateColumns: "2.6fr 1fr 1.2fr 100px 150px" }}
-              >
-                <div className="row" style={{ minWidth: 0 }}>
-                  <FileTile ext={item.ext} tone={0} size={36} />
-                  <div className="col" style={{ gap: 1, minWidth: 0 }}>
-                    <Link
-                      href={resolveBoardHref("Viewer.dc.html")}
-                      className="ell m"
-                    >
-                      {item.name}
-                    </Link>
-                  </div>
-                </div>
-                <span className="sm muted">{item.daysLeft}</span>
-                <div className="bar" style={{ width: 120 }}>
-                  <i style={{ width: `${item.progress}%` }} />
-                </div>
-                <Button
-                  label="Restore"
-                  variant="secondary"
-                  size="sm"
-                  icon="undo"
-                  onClick={() => restoreItem(item.id)}
-                />
-                <Button
-                  label="Delete forever"
-                  variant="danger"
-                  size="sm"
-                  icon="trash"
-                  onClick={() => deleteForever(item.id)}
-                />
+            {filesQuery.isLoading ? (
+              <div className="col center muted" style={{ padding: "36px 20px" }}>
+                <span className="sm">Loading trash…</span>
               </div>
-            ))}
-
-            {filteredItems.length === 0 ? (
+            ) : filteredItems.length > 0 ? (
+              filteredItems.map((item) => {
+                const daysLeft = daysUntil(item.purgeAt) ?? 30
+                const progress = Math.min(
+                  100,
+                  Math.max(5, Math.round(((30 - daysLeft) / 30) * 100))
+                )
+                return (
+                  <div
+                    key={item.id}
+                    className="trow"
+                    style={{ gridTemplateColumns: "2.6fr 1fr 1.2fr 100px 150px" }}
+                  >
+                    <div className="row" style={{ minWidth: 0 }}>
+                      <FileTile ext={extractExt(item.name)} tone={0} size={36} />
+                      <div className="col" style={{ gap: 1, minWidth: 0 }}>
+                        <Link
+                          href={`/viewer?fileId=${encodeURIComponent(item.id)}`}
+                          className="ell m"
+                        >
+                          {item.name}
+                        </Link>
+                      </div>
+                    </div>
+                    <span className="sm muted">
+                      {daysLeft} {daysLeft === 1 ? "day" : "days"}
+                    </span>
+                    <div className="bar" style={{ width: 120 }}>
+                      <i style={{ width: `${progress}%` }} />
+                    </div>
+                    <Button
+                      label="Restore"
+                      variant="secondary"
+                      size="sm"
+                      icon="undo"
+                      disabled={busyId === item.id}
+                      onClick={() => void restoreItem(item.id, item.name)}
+                    />
+                    <Button
+                      label="Delete forever"
+                      variant="danger"
+                      size="sm"
+                      icon="trash"
+                      disabled={busyId === item.id}
+                      onClick={() => void deleteForever(item.id, item.name)}
+                    />
+                  </div>
+                )
+              })
+            ) : (
               <div
                 className="col center"
                 style={{ padding: "48px 20px", gap: 6 }}
@@ -223,23 +204,13 @@ export default function TrashPage() {
                     : "Clear the search filter to see all trashed files."}
                 </span>
               </div>
-            ) : null}
+            )}
           </div>
         </div>
 
-        {toast ? (
+        {toastMsg ? (
           <div role="status" aria-live="polite" className="toast">
-            <span>{toast.msg}</span>
-            {toast.undo ? (
-              <Button
-                label="Undo"
-                variant="secondary"
-                size="sm"
-                onClick={toast.undo}
-              />
-            ) : (
-              <span style={{ width: 8 }} />
-            )}
+            <span>{toastMsg}</span>
           </div>
         ) : null}
       </main>

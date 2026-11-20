@@ -14,6 +14,7 @@
     "GCS_QUARANTINE_BUCKET",
     "GCS_CLEAN_BUCKET",
     "KMS_KEY_NAME",
+    "GCS_SIGNER_EMAIL",
     "CORS_ORIGIN"
   ],
   "tasks": {

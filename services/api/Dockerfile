@@ -13,7 +13,7 @@ RUN pnpm install --frozen-lockfile --filter @workspace/api...
 COPY packages/typescript-config packages/typescript-config
 COPY packages/schema packages/schema
 COPY services/api services/api
-RUN pnpm --filter @workspace/api build
+RUN pnpm --filter @workspace/schema build && pnpm --filter @workspace/api build
 
 FROM base AS runner
 WORKDIR /app

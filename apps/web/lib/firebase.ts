@@ -43,6 +43,7 @@ export const googleProvider = new GoogleAuthProvider()
 export async function getIdToken(): Promise<string | null> {
   if (!isFirebaseConfigured) return null
   const auth = getFirebaseAuth()
+  await auth.authStateReady()
   const user = auth.currentUser
   if (!user) return null
   return user.getIdToken()

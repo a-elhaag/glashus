@@ -4,123 +4,43 @@ import * as React from "react"
 import Link from "next/link"
 import {
   Button,
+  Chip,
   FileTile,
-  Icon,
   PageHead,
   Seg,
-  Sidebar,
-  resolveBoardHref,
 } from "@workspace/ui/components/glashus"
+import { AppSidebar } from "@/components/app-sidebar"
+import { glashusApi } from "@/lib/api"
+import {
+  daysUntil,
+  extractExt,
+  formatBytes,
+  formatShortDate,
+} from "@/lib/format"
+import {
+  type ShareData,
+  unwrapApi,
+  useInvalidateDrive,
+  useShares,
+} from "@/lib/queries"
 
-type SegmentOption = "All" | "Public" | "People" | "Expiring"
-type ExtraFilter = "all" | "pin" | "never"
+type TabLabel = "All" | "Public" | "People" | "Expiring"
 
-interface ShareLinkRow {
-  id: string
-  name: string
-  ext: string
-  tone: 0 | 1 | 2
-  audienceType: "public" | "people"
-  sharedWith: string
-  expires: string
-  expiring: boolean
-  downloads: string
-  hasPin: boolean
-}
-
-const SHARE_LINKS: ShareLinkRow[] = [
-  {
-    id: "tax-return-2025",
-    name: "tax-return-2025.pdf",
-    ext: "PDF",
-    tone: 2,
-    audienceType: "public",
-    sharedWith: "Public link",
-    expires: "Never",
-    expiring: false,
-    downloads: "7 / ∞",
-    hasPin: false,
-  },
-  {
-    id: "api-config",
-    name: "api-config.env",
-    ext: "ENV",
-    tone: 1,
-    audienceType: "people",
-    sharedWith: "sara@studio.dev",
-    expires: "Never",
-    expiring: false,
-    downloads: "1 / 1",
-    hasPin: false,
-  },
-  {
-    id: "q3-pitch-deck",
-    name: "q3-pitch-deck.pdf",
-    ext: "PDF",
-    tone: 1,
-    audienceType: "public",
-    sharedWith: "Public link",
-    expires: "2 days",
-    expiring: true,
-    downloads: "12 / 25",
-    hasPin: true,
-  },
-  {
-    id: "team-photos",
-    name: "team-photos.zip",
-    ext: "ZIP",
-    tone: 1,
-    audienceType: "people",
-    sharedWith: "4 people",
-    expires: "14 days",
-    expiring: true,
-    downloads: "31 / ∞",
-    hasPin: false,
-  },
-  {
-    id: "thesis-draft-v4",
-    name: "thesis-draft-v4.docx",
-    ext: "DOC",
-    tone: 0,
-    audienceType: "people",
-    sharedWith: "Prof. Haddad",
-    expires: "5 days",
-    expiring: true,
-    downloads: "3 / 5",
-    hasPin: true,
-  },
-  {
-    id: "site-plan",
-    name: "site-plan.png",
-    ext: "PNG",
-    tone: 1,
-    audienceType: "public",
-    sharedWith: "Public link",
-    expires: "Never",
-    expiring: false,
-    downloads: "44 / ∞",
-    hasPin: false,
-  },
-]
-
-const EXTRA_FILTERS: Array<{ id: ExtraFilter; label: string }> = [
-  { id: "all", label: "All rules" },
-  { id: "pin", label: "PIN required" },
-  { id: "never", label: "Never expires" },
-]
-
-interface ToastState {
-  msg: string
-  prevRevoked: string[] | null
+function isExpiringSoon(share: ShareData): boolean {
+  if (!share.expiresAt) return false
+  const ms = new Date(share.expiresAt).getTime() - Date.now()
+  return ms <= 48 * 60 * 60 * 1000
 }
 
 export default function SharingPage() {
-  const [segment, setSegment] = React.useState<SegmentOption>("All")
-  const [filterOpen, setFilterOpen] = React.useState(false)
-  const [extraFilter, setExtraFilter] = React.useState<ExtraFilter>("all")
-  const [searchQuery, setSearchQuery] = React.useState("")
-  const [revokedIds, setRevokedIds] = React.useState<string[]>([])
-  const [toast, setToast] = React.useState<ToastState | null>(null)
+  const { data: shares = [], isLoading, error } = useShares()
+  const invalidate = useInvalidateDrive()
+
+  const [tab, setTab] = React.useState<TabLabel>("All")
+  const [search, setSearch] = React.useState("")
+  const [pendingId, setPendingId] = React.useState<string | null>(null)
+  const [revokingAll, setRevokingAll] = React.useState(false)
+  const [toast, setToast] = React.useState<string | null>(null)
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   React.useEffect(() => {
@@ -129,280 +49,333 @@ export default function SharingPage() {
     }
   }, [])
 
-  const showToast = React.useCallback(
-    (msg: string, prevRevoked: string[] | null) => {
-      if (timerRef.current) clearTimeout(timerRef.current)
-      setToast({ msg, prevRevoked })
-      timerRef.current = setTimeout(() => {
-        setToast(null)
-        timerRef.current = null
-      }, 5000)
-    },
-    []
-  )
-
-  const handleRevoke = (item: ShareLinkRow) => {
-    const prev = revokedIds
-    setRevokedIds((curr) => (curr.includes(item.id) ? curr : [...curr, item.id]))
-    showToast(`Revoked link for ${item.name}`, prev)
-  }
-
-  const handleRevokeAllPublic = () => {
-    const activePublic = SHARE_LINKS.filter(
-      (item) => item.audienceType === "public" && !revokedIds.includes(item.id)
-    )
-    if (activePublic.length === 0) {
-      showToast("No active public links remaining", null)
-      return
-    }
-    const prev = revokedIds
-    const next = Array.from(
-      new Set([...prev, ...activePublic.map((item) => item.id)])
-    )
-    setRevokedIds(next)
-    showToast(
-      `Revoked ${activePublic.length} public ${activePublic.length === 1 ? "link" : "links"}`,
-      prev
-    )
-  }
-
-  const handleUndo = () => {
-    if (!toast?.prevRevoked) return
+  const notify = React.useCallback((msg: string) => {
     if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = null
-    setRevokedIds(toast.prevRevoked)
-    setToast(null)
-  }
+    setToast(msg)
+    timerRef.current = setTimeout(() => setToast(null), 3200)
+  }, [])
 
-  const revokedItems = React.useMemo(
-    () => SHARE_LINKS.filter((item) => revokedIds.includes(item.id)),
-    [revokedIds]
+  const activeShares = React.useMemo(
+    () => shares.filter((s) => !s.revokedAt),
+    [shares]
   )
 
-  const visibleLinks = React.useMemo(() => {
-    const query = searchQuery.trim().toLowerCase()
-    return SHARE_LINKS.filter((item) => {
-      if (revokedIds.includes(item.id)) return false
-      if (segment === "Public" && item.audienceType !== "public") return false
-      if (segment === "People" && item.audienceType !== "people") return false
-      if (segment === "Expiring" && !item.expiring) return false
-      if (extraFilter === "pin" && !item.hasPin) return false
-      if (extraFilter === "never" && item.expires !== "Never") return false
-      if (
-        query &&
-        !item.name.toLowerCase().includes(query) &&
-        !item.sharedWith.toLowerCase().includes(query)
-      ) {
-        return false
+  const stats = React.useMemo(() => {
+    const publicCount = activeShares.filter((s) => s.audience === "anyone").length
+    const expiringCount = activeShares.filter(isExpiringSoon).length
+    const neverExpireCount = activeShares.filter((s) => s.expiresAt === null).length
+    const downloads = activeShares.reduce((sum, s) => sum + s.downloads, 0)
+    return {
+      total: activeShares.length,
+      publicCount,
+      expiringCount,
+      neverExpireCount,
+      downloads,
+    }
+  }, [activeShares])
+
+  const filtered = React.useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return activeShares.filter((s) => {
+      if (tab === "Public" && s.audience !== "anyone") return false
+      if (tab === "People" && s.audience !== "specific_people") return false
+      if (tab === "Expiring" && !isExpiringSoon(s)) return false
+      if (q) {
+        const hay = `${s.fileName} ${s.recipientEmail ?? ""}`.toLowerCase()
+        if (!hay.includes(q)) return false
       }
       return true
     })
-  }, [revokedIds, segment, extraFilter, searchQuery])
+  }, [activeShares, search, tab])
 
-  const activeLinksCount = Math.max(0, 9 - revokedItems.length)
-  const expire48hCount = Math.max(
-    0,
-    3 - revokedItems.filter((item) => item.expires === "2 days").length
-  )
-  const neverExpireCount = Math.max(
-    0,
-    4 - revokedItems.filter((item) => item.expires === "Never").length
-  )
+  const copyShareLink = async (shareId: string, fileName: string) => {
+    const url = `${window.location.origin}/sharing/recipient?shareId=${encodeURIComponent(shareId)}`
+    try {
+      await navigator.clipboard.writeText(url)
+      notify(`Copied share link for ${fileName}`)
+    } catch {
+      notify(url)
+    }
+  }
+
+  const revokeOne = async (share: ShareData) => {
+    setPendingId(share.id)
+    try {
+      unwrapApi(
+        await glashusApi.DELETE("/v1/shares/{id}", {
+          params: { path: { id: share.id } },
+        })
+      )
+      invalidate()
+      notify(`Revoked link for ${share.fileName}`)
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Could not revoke link.")
+    } finally {
+      setPendingId(null)
+    }
+  }
+
+  const revokeAllPublic = async () => {
+    setRevokingAll(true)
+    try {
+      const res = unwrapApi(await glashusApi.POST("/v1/shares/revoke-public"))
+      invalidate()
+      notify(
+        `Revoked ${res.revokedCount} public link${res.revokedCount === 1 ? "" : "s"}`
+      )
+    } catch (err) {
+      notify(
+        err instanceof Error ? err.message : "Could not revoke public links."
+      )
+    } finally {
+      setRevokingAll(false)
+    }
+  }
 
   return (
     <div className="app" style={{ minHeight: 900 }}>
-      <Sidebar active="shared" />
+      <AppSidebar active="shared" />
       <main className="main">
         <PageHead
           title="Shared by me"
-          sub="Every link, who has it, and when it ends"
-          cta="New link"
-          ctaIcon="link"
-          searchValue={searchQuery}
-          onSearchChange={setSearchQuery}
+          sub="Every active share link across your drive, its PIN lock, expiry, and download count."
+          cta="New share"
+          ctaIcon="share"
+          ctaHref="/sharing/share"
+          searchValue={search}
+          onSearchChange={setSearch}
         />
 
-        <div
+        <section
+          aria-label="Share overview"
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-            gap: 16,
+            gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+            gap: 12,
           }}
         >
-          <div className="glass card col" style={{ gap: 4, padding: "18px 20px" }}>
-            <span style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.03em" }}>
-              {activeLinksCount}
+          <div className="glass card col" style={{ padding: 18, gap: 4 }}>
+            <span className="xs muted">ACTIVE SHARES</span>
+            <span style={{ fontSize: 32, fontWeight: 600 }}>{stats.total}</span>
+            <span className="xs muted">
+              {stats.publicCount} public · {stats.total - stats.publicCount} people
             </span>
-            <span className="sm muted">Active links</span>
           </div>
-          <div className="glass card col" style={{ gap: 4, padding: "18px 20px" }}>
-            <span style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.03em" }}>
-              {expire48hCount}
+          <div className="glass card col" style={{ padding: 18, gap: 4 }}>
+            <span className="xs muted">EXPIRING &lt;48H</span>
+            <span style={{ fontSize: 32, fontWeight: 600 }}>
+              {stats.expiringCount}
             </span>
-            <span className="sm muted">Expire within 48 hours</span>
+            <span className="xs muted">Auto-revoked on expiry</span>
           </div>
-          <div className="glass card col" style={{ gap: 4, padding: "18px 20px" }}>
-            <span
-              style={{
-                fontSize: 28,
-                fontWeight: 600,
-                letterSpacing: "-0.03em",
-                color: "var(--accent)",
-              }}
-            >
-              {neverExpireCount}
+          <div className="glass card col" style={{ padding: 18, gap: 4 }}>
+            <span className="xs muted">NEVER EXPIRE</span>
+            <span style={{ fontSize: 32, fontWeight: 600 }}>
+              {stats.neverExpireCount}
             </span>
-            <span className="sm muted">Never expire</span>
-          </div>
-          <div className="glass card col" style={{ gap: 4, padding: "18px 20px" }}>
-            <span style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.03em" }}>
-              12
+            <span className="xs muted">
+              {stats.neverExpireCount > 0 ? "Review recommended" : "All bounded"}
             </span>
-            <span className="sm muted">Downloads today</span>
           </div>
-        </div>
+          <div className="glass card col" style={{ padding: 18, gap: 4 }}>
+            <span className="xs muted">TOTAL DOWNLOADS</span>
+            <span style={{ fontSize: 32, fontWeight: 600 }}>
+              {stats.downloads}
+            </span>
+            <span className="xs muted">60 s signed URLs issued</span>
+          </div>
+        </section>
 
-        <div className="col" style={{ gap: 10 }}>
-          <div className="row wrap between">
+        <section aria-label="Share links" className="col" style={{ gap: 12 }}>
+          <div className="row wrap between" style={{ gap: 10 }}>
             <Seg
               options="All|Public|People|Expiring"
-              value={segment}
-              onChange={(val) => setSegment(val as SegmentOption)}
-              aria-label="Filter shared links"
+              value={tab}
+              onChange={(val) => {
+                if (
+                  val === "All" ||
+                  val === "Public" ||
+                  val === "People" ||
+                  val === "Expiring"
+                ) {
+                  setTab(val)
+                }
+              }}
+              aria-label="Filter active shares"
             />
-            <div className="row">
-              <Button
-                label="Filter"
-                variant={filterOpen || extraFilter !== "all" ? "secondary" : "ghost"}
-                size="md"
-                icon="filter"
-                onClick={() => setFilterOpen((open) => !open)}
-              />
-              <Button
-                label="Revoke all public"
-                variant="danger"
-                size="md"
-                onClick={handleRevokeAllPublic}
-              />
-            </div>
+            <Button
+              label={
+                revokingAll
+                  ? "Revoking…"
+                  : `Revoke all public (${stats.publicCount})`
+              }
+              icon="x"
+              variant="danger"
+              size="sm"
+              disabled={revokingAll || stats.publicCount === 0}
+              onClick={() => void revokeAllPublic()}
+            />
           </div>
 
-          {filterOpen ? (
-            <div
-              className="glass-soft row wrap between"
-              style={{ borderRadius: 14, padding: "10px 14px", gap: 10 }}
-            >
-              <div className="row wrap" style={{ gap: 8 }}>
-                <span className="xs b muted">Link rules</span>
-                {EXTRA_FILTERS.map((opt) => (
-                  <Button
-                    key={opt.id}
-                    label={opt.label}
-                    variant={extraFilter === opt.id ? "secondary" : "ghost"}
-                    size="sm"
-                    onClick={() => setExtraFilter(opt.id)}
-                  />
-                ))}
+          <div
+            className="glass"
+            style={{ overflowX: "auto", borderRadius: 20 }}
+          >
+            <div style={{ minWidth: 780 }}>
+              <div
+                className="thead"
+                style={{
+                  gridTemplateColumns:
+                    "minmax(0,2.2fr) 1.3fr 1fr 0.9fr 210px",
+                }}
+              >
+                <span>File</span>
+                <span>Audience</span>
+                <span>Expiry</span>
+                <span>Downloads</span>
+                <span style={{ textAlign: "right" }}>Actions</span>
               </div>
-              {extraFilter !== "all" || searchQuery ? (
-                <Button
-                  label="Reset filters"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setExtraFilter("all")
-                    setSearchQuery("")
-                    setSegment("All")
-                  }}
-                />
-              ) : null}
-            </div>
-          ) : null}
-        </div>
 
-        <div className="glass" style={{ overflowX: "auto", borderRadius: 20 }}>
-          <div style={{ minWidth: 760 }}>
-            <div
-              className="thead"
-              style={{ gridTemplateColumns: "2.4fr 1.4fr 1fr 0.8fr 0.5fr 110px" }}
-            >
-              <span>File</span>
-              <span>Shared with</span>
-              <span>Expires</span>
-              <span>Downloads</span>
-              <span>PIN</span>
-              <span />
-            </div>
-
-            {visibleLinks.length > 0 ? (
-              visibleLinks.map((item) => (
-                <div
-                  key={item.id}
-                  className="trow"
-                  style={{ gridTemplateColumns: "2.4fr 1.4fr 1fr 0.8fr 0.5fr 110px" }}
-                >
-                  <div className="row" style={{ minWidth: 0 }}>
-                    <FileTile ext={item.ext} tone={item.tone} size={36} />
-                    <div className="col" style={{ gap: 1, minWidth: 0 }}>
-                      <Link href={resolveBoardHref("Viewer.dc.html")} className="ell m">
-                        {item.name}
-                      </Link>
-                    </div>
-                  </div>
-                  <span className="row sm" style={{ gap: 8 }}>
-                    <Icon
-                      glyph={item.audienceType === "public" ? "globe" : "user"}
-                      size={14}
-                    />
-                    {item.sharedWith}
-                  </span>
-                  <span className={item.expires === "Never" ? "sm m" : "sm muted"}>
-                    {item.expires}
-                  </span>
-                  <span className="sm muted">{item.downloads}</span>
-                  {item.hasPin ? (
-                    <Icon glyph="lock" size={16} />
-                  ) : (
-                    <span className="sm muted">—</span>
-                  )}
-                  <Button
-                    label="Revoke"
-                    variant="danger"
-                    size="sm"
-                    onClick={() => handleRevoke(item)}
-                  />
+              {isLoading ? (
+                <div className="col center muted" style={{ padding: "36px 20px" }}>
+                  <span className="sm">Loading active share links…</span>
                 </div>
-              ))
-            ) : (
-              <div className="col center" style={{ padding: "40px 20px", gap: 10 }}>
-                <span className="m">No matching links</span>
-                <span className="sm muted">
-                  {revokedItems.length > 0
-                    ? "Revoked links stop working immediately."
-                    : "Adjust your filter to see other shared links."}
-                </span>
-                {revokedItems.length > 0 ? (
-                  <Button
-                    label="Restore revoked links"
-                    variant="secondary"
-                    size="sm"
-                    icon="undo"
-                    onClick={() => setRevokedIds([])}
-                  />
-                ) : null}
-              </div>
-            )}
-          </div>
-        </div>
+              ) : error ? (
+                <div
+                  className="col center"
+                  style={{ padding: "36px 20px", color: "var(--accent)" }}
+                >
+                  <span className="sm">
+                    {error instanceof Error
+                      ? error.message
+                      : "Failed to load shares."}
+                  </span>
+                </div>
+              ) : filtered.length === 0 ? (
+                <div
+                  className="col center"
+                  style={{ padding: "40px 20px", gap: 6 }}
+                >
+                  <span className="h2">No matching share links</span>
+                  <span className="sm muted">
+                    Create a share link from any clean file in your Drive.
+                  </span>
+                  <div style={{ marginTop: 8 }}>
+                    <Button
+                      label="New share"
+                      variant="primary"
+                      size="sm"
+                      href="/sharing/share"
+                    />
+                  </div>
+                </div>
+              ) : (
+                filtered.map((s) => {
+                  const days = daysUntil(s.expiresAt)
+                  const soon = isExpiringSoon(s)
+                  return (
+                    <div
+                      key={s.id}
+                      className="trow"
+                      style={{
+                        gridTemplateColumns:
+                          "minmax(0,2.2fr) 1.3fr 1fr 0.9fr 210px",
+                      }}
+                    >
+                      <div className="row" style={{ gap: 10, minWidth: 0 }}>
+                        <FileTile
+                          ext={extractExt(s.fileName)}
+                          tone={s.audience === "anyone" ? 2 : 1}
+                          size={36}
+                        />
+                        <div className="col" style={{ minWidth: 0, gap: 2 }}>
+                          <Link
+                            href={`/viewer?fileId=${encodeURIComponent(s.fileId)}`}
+                            className="ell m"
+                          >
+                            {s.fileName}
+                          </Link>
+                          <div className="row" style={{ gap: 6 }}>
+                            <span className="xs muted">
+                              {formatBytes(s.fileSize)} ·{" "}
+                              {s.redacted ? "Redacted copy" : "Original"}
+                            </span>
+                            {s.hasPin ? (
+                              <Chip label="PIN" tone="clear" />
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
 
-        {toast ? (
-          <div role="status" className="toast" style={{ position: "fixed" }}>
-            <span>{toast.msg}</span>
-            {toast.prevRevoked ? (
-              <Button label="Undo" variant="secondary" size="sm" onClick={handleUndo} />
-            ) : null}
+                      <div>
+                        <Chip
+                          label={
+                            s.audience === "anyone"
+                              ? "Anyone with link"
+                              : s.recipientEmail || "Specific person"
+                          }
+                          tone={s.audience === "anyone" ? "accent" : "neutral"}
+                        />
+                      </div>
+
+                      <div>
+                        {s.expiresAt === null ? (
+                          <Chip label="Never expires" tone="accent" />
+                        ) : (
+                          <div className="col" style={{ gap: 2 }}>
+                            <span className="sm m">
+                              {days === 0 ? "Today" : `${days}d left`}
+                            </span>
+                            <span className="xs muted">
+                              {soon ? "Soon · " : ""}
+                              {formatShortDate(s.expiresAt)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="sm">
+                        <span className="m">{s.downloads}</span>
+                        <span className="muted">
+                          {s.maxDownloads !== null
+                            ? ` / ${s.maxDownloads}`
+                            : " / ∞"}
+                        </span>
+                      </div>
+
+                      <div
+                        className="row"
+                        style={{ justifyContent: "flex-end", gap: 6 }}
+                      >
+                        <Button
+                          label="Copy"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => void copyShareLink(s.id, s.fileName)}
+                        />
+                        <Button
+                          label="Open"
+                          size="sm"
+                          variant="ghost"
+                          href={`/sharing/recipient?shareId=${encodeURIComponent(s.id)}`}
+                        />
+                        <Button
+                          label={pendingId === s.id ? "…" : "Revoke"}
+                          size="sm"
+                          variant="danger"
+                          disabled={pendingId === s.id}
+                          onClick={() => void revokeOne(s)}
+                        />
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
           </div>
-        ) : null}
+        </section>
+
+        {toast ? <div className="toast">{toast}</div> : null}
       </main>
     </div>
   )

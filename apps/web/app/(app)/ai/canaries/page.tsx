@@ -7,75 +7,48 @@ import {
   Icon,
   PageHead,
   Seg,
-  Sidebar,
 } from "@workspace/ui/components/glashus"
+import { AppSidebar } from "@/components/app-sidebar"
+import { glashusApi } from "@/lib/api"
+import { formatTimeOrDate } from "@/lib/format"
+import {
+  type CanaryListData,
+  unwrapApi,
+  useCanaries,
+  useFolders,
+  useInvalidateDrive,
+} from "@/lib/queries"
 
-type AlertChannel = "Email" | "Push" | "Both"
-type CanaryStatus = "Triggered" | "Armed" | "Paused"
+type CanaryItem = CanaryListData["canaries"][number]
 
-interface CanaryItem {
-  id: string
-  name: string
-  folder: string
-  status: CanaryStatus
-  detail: string
-  channel: AlertChannel
+function statusUi(status: CanaryItem["status"]): {
+  label: string
+  tone: "accent" | "neutral"
+} {
+  if (status === "triggered") return { label: "Triggered", tone: "accent" }
+  if (status === "paused") return { label: "Paused", tone: "neutral" }
+  return { label: "Armed", tone: "accent" }
 }
-
-interface TriggerRecord {
-  id: string
-  when: string
-  canary: string
-  source: string
-  result: "Alert sent" | "Ignored"
-}
-
-const INITIAL_CANARIES: CanaryItem[] = [
-  {
-    id: "can-1",
-    name: "passwords-backup.xlsx",
-    folder: "/Personal",
-    status: "Triggered",
-    detail: "Opened 2 hours ago from an unknown location",
-    channel: "Both",
-  },
-  {
-    id: "can-2",
-    name: "bank-statements-2024.zip",
-    folder: "/Finance",
-    status: "Armed",
-    detail: "Never opened. Checked every request.",
-    channel: "Both",
-  },
-]
-
-const INITIAL_HISTORY: TriggerRecord[] = [
-  {
-    id: "hist-1",
-    when: "Today, 12:41",
-    canary: "passwords-backup.xlsx",
-    source: "Unknown network · Chrome on Windows",
-    result: "Alert sent",
-  },
-  {
-    id: "hist-2",
-    when: "Oct 18, 09:12",
-    canary: "bank-statements-2024.zip",
-    source: "Your own account · test",
-    result: "Ignored",
-  },
-]
 
 export default function CanariesPage() {
-  const [canaries, setCanaries] = React.useState<CanaryItem[]>(INITIAL_CANARIES)
-  const [history, setHistory] = React.useState<TriggerRecord[]>(INITIAL_HISTORY)
-  const [newName, setNewName] = React.useState("client-contracts-2026.pdf")
-  const [channel, setChannel] = React.useState<AlertChannel>("Both")
-  const [toast, setToast] = React.useState<{
-    message: string
-    undo?: () => void
-  } | null>(null)
-  const inputRef = React.useRef<HTMLInputElement | null>(null)
+  const { data, isLoading, error } = useCanaries()
+  const { data: folders = [] } = useFolders()
+  const invalidate = useInvalidateDrive()
+
+  const canaries = data?.canaries ?? []
+  const history = data?.history ?? []
+
+  const [newName, setNewName] = React.useState("")
+  const [folderId, setFolderId] = React.useState<string>("")
+  const [channelUi, setChannelUi] = React.useState<"Both" | "Email" | "Push">(
+    "Both"
+  )
+  const [search, setSearch] = React.useState("")
+  const [busyId, setBusyId] = React.useState<string | null>(null)
+  const [creating, setCreating] = React.useState(false)
+  const [toast, setToast] = React.useState<string | null>(null)
+
+  const nameInputRef = React.useRef<HTMLInputElement | null>(null)
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   React.useEffect(() => {
@@ -84,152 +57,252 @@ export default function CanariesPage() {
     }
   }, [])
 
-  function showToast(message: string, undo?: () => void) {
+  const notify = React.useCallback((msg: string) => {
     if (timerRef.current) clearTimeout(timerRef.current)
-    setToast({ message, undo })
-    timerRef.current = setTimeout(() => setToast(null), 5000)
-  }
+    setToast(msg)
+    timerRef.current = setTimeout(() => setToast(null), 3200)
+  }, [])
 
-  function handleFocusNew() {
-    inputRef.current?.focus()
-    inputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
-  }
-
-  function handleToggleCanary(id: string) {
-    const prev = canaries
-    const target = canaries.find((c) => c.id === id)
-    if (!target) return
-
-    const nextStatus: CanaryStatus =
-      target.status === "Armed" ? "Paused" : "Armed"
-    const nextDetail =
-      nextStatus === "Armed"
-        ? target.status === "Triggered"
-          ? "Re-armed. Checked every request."
-          : "Never opened. Checked every request."
-        : "Paused. Opens will not alert until armed."
-
-    setCanaries((list) =>
-      list.map((c) =>
-        c.id === id ? { ...c, status: nextStatus, detail: nextDetail } : c
-      )
+  const filteredCanaries = React.useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return canaries
+    return canaries.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        c.folderName.toLowerCase().includes(q)
     )
-    showToast(
-      nextStatus === "Armed"
-        ? `Canary armed: ${target.name}`
-        : `Canary paused: ${target.name}`,
-      () => {
-        setCanaries(prev)
-        setToast(null)
-      }
-    )
-  }
+  }, [canaries, search])
 
-  function handleTestTrigger(canary: CanaryItem) {
-    if (canary.status === "Paused") {
-      showToast(`${canary.name} is paused — arm it to test triggers`)
-      return
-    }
-    const prevHistory = history
-    const record: TriggerRecord = {
-      id: `hist-${Date.now()}`,
-      when: "Just now",
-      canary: canary.name,
-      source: `Your own account · test (${canary.channel})`,
-      result: "Ignored",
-    }
-    setHistory((items) => [record, ...items])
-    showToast(`Test trigger logged for ${canary.name}`, () => {
-      setHistory(prevHistory)
-      setToast(null)
-    })
-  }
-
-  function handleArmNew(e: React.FormEvent) {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
     const trimmed = newName.trim()
     if (!trimmed) return
-
-    const prev = canaries
-    const created: CanaryItem = {
-      id: `can-${Date.now()}`,
-      name: trimmed,
-      folder: "/Drive",
-      status: "Armed",
-      detail: `Never opened. Alerts via ${channel.toLowerCase()}.`,
-      channel,
+    setCreating(true)
+    const channel =
+      channelUi === "Email"
+        ? "email"
+        : channelUi === "Push"
+          ? "push"
+          : "both"
+    try {
+      const created = unwrapApi(
+        await glashusApi.POST("/v1/canaries", {
+          body: {
+            name: trimmed,
+            folderId: folderId || null,
+            channel,
+          },
+        })
+      )
+      setNewName("")
+      invalidate()
+      notify(`Canary armed: ${created.name}`)
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Could not arm canary.")
+    } finally {
+      setCreating(false)
     }
-    setCanaries((items) => [...items, created])
-    setNewName("")
-    showToast(`Canary armed: ${trimmed}`, () => {
-      setCanaries(prev)
-      setToast(null)
-    })
+  }
+
+  const handleTestTrigger = async (canary: CanaryItem) => {
+    setBusyId(`test:${canary.id}`)
+    try {
+      unwrapApi(
+        await glashusApi.POST("/v1/canaries/{id}/test", {
+          params: { path: { id: canary.id } },
+        })
+      )
+      invalidate()
+      notify(`Simulated trigger on ${canary.name}`)
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Could not test canary.")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const handleToggleCanary = async (canary: CanaryItem) => {
+    const nextStatus = canary.status === "armed" ? "paused" : "armed"
+    setBusyId(`toggle:${canary.id}`)
+    try {
+      unwrapApi(
+        await glashusApi.PATCH("/v1/canaries/{id}", {
+          params: { path: { id: canary.id } },
+          body: { status: nextStatus },
+        })
+      )
+      invalidate()
+      notify(
+        nextStatus === "paused"
+          ? `Paused ${canary.name}`
+          : `Armed ${canary.name}`
+      )
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Could not update canary.")
+    } finally {
+      setBusyId(null)
+    }
   }
 
   return (
     <div className="app" style={{ minHeight: 900, position: "relative" }}>
-      <Sidebar active="canaries" />
+      <AppSidebar active="canaries" />
       <main className="main">
         <PageHead
           title="Canaries"
-          sub="Bait files that tell you when someone is snooping"
+          sub="Bait files that tell you when someone opens an unexpected link or downloads suspicious files."
           cta="New canary"
           ctaIcon="plus"
-          onCtaClick={handleFocusNew}
+          onCtaClick={() => {
+            nameInputRef.current?.scrollIntoView({ behavior: "smooth" })
+            nameInputRef.current?.focus()
+          }}
+          searchValue={search}
+          onSearchChange={setSearch}
         />
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-            gap: 16,
-          }}
+        <form
+          onSubmit={handleCreate}
+          className="glass card col"
+          style={{ gap: 12 }}
         >
-          {canaries.map((canary) => (
-            <div key={canary.id} className="glass card col" style={{ gap: 12 }}>
-              <div className="row" style={{ gap: 12 }}>
-                <div className={canary.status === "Paused" ? "tile n" : "tile"}>
-                  <Icon glyph="flag" size={18} />
+          <div className="row wrap between" style={{ gap: 8 }}>
+            <span className="m">Arm a new canary bait file</span>
+            <Seg
+              options="Both|Email|Push"
+              value={channelUi}
+              onChange={(val) => {
+                if (val === "Both" || val === "Email" || val === "Push") {
+                  setChannelUi(val)
+                }
+              }}
+              aria-label="Alert channel"
+            />
+          </div>
+          <div className="row wrap" style={{ gap: 10 }}>
+            <input
+              ref={nameInputRef}
+              className="input grow"
+              style={{ minWidth: 220 }}
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="Bait filename (e.g. Q4-payroll-keys.xlsx)"
+            />
+            <select
+              aria-label="Target folder"
+              className="input"
+              style={{ width: 200 }}
+              value={folderId}
+              onChange={(e) => setFolderId(e.target.value)}
+            >
+              <option value="">/Drive (root)</option>
+              {folders.map((fld) => (
+                <option key={fld.id} value={fld.id}>
+                  /{fld.name}
+                </option>
+              ))}
+            </select>
+            <Button
+              label={creating ? "Arming…" : "Arm canary"}
+              variant="primary"
+              icon="flag"
+              type="submit"
+              disabled={creating || !newName.trim()}
+            />
+          </div>
+        </form>
+
+        {isLoading ? (
+          <div className="glass card" style={{ padding: 24 }}>
+            <span className="sm muted">Loading canaries…</span>
+          </div>
+        ) : error ? (
+          <div className="glass card" style={{ padding: 24 }}>
+            <span className="sm" style={{ color: "var(--accent)" }}>
+              {error instanceof Error
+                ? error.message
+                : "Could not load canaries."}
+            </span>
+          </div>
+        ) : filteredCanaries.length === 0 ? (
+          <div className="glass card col center" style={{ padding: 32, gap: 6 }}>
+            <span className="h2">No canary files armed</span>
+            <span className="sm muted">
+              Create a bait file above to get alerted whenever anyone opens or
+              tests it.
+            </span>
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+              gap: 16,
+            }}
+          >
+            {filteredCanaries.map((canary) => {
+              const st = statusUi(canary.status)
+              return (
+                <div
+                  key={canary.id}
+                  className="glass card col"
+                  style={{ gap: 12 }}
+                >
+                  <div className="row" style={{ gap: 12 }}>
+                    <div
+                      className={
+                        canary.status === "paused" ? "tile n" : "tile"
+                      }
+                    >
+                      <Icon glyph="flag" size={18} />
+                    </div>
+                    <div className="grow col" style={{ gap: 2, minWidth: 0 }}>
+                      <span className="m ell">{canary.name}</span>
+                      <span className="xs muted">
+                        {canary.folderName} · Alerts via {canary.channel}
+                      </span>
+                    </div>
+                    <Chip label={st.label} tone={st.tone} />
+                  </div>
+                  <hr className="hr" />
+                  <div className="row wrap between" style={{ gap: 10 }}>
+                    <span className="sm muted">{canary.detail}</span>
+                    <div className="row" style={{ gap: 6 }}>
+                      <Button
+                        label={
+                          busyId === `test:${canary.id}`
+                            ? "Testing…"
+                            : "Test trigger"
+                        }
+                        variant="ghost"
+                        size="sm"
+                        icon="bell"
+                        disabled={busyId !== null}
+                        onClick={() => void handleTestTrigger(canary)}
+                      />
+                      <Button
+                        label={
+                          busyId === `toggle:${canary.id}`
+                            ? "…"
+                            : canary.status === "armed"
+                              ? "Pause"
+                              : canary.status === "triggered"
+                                ? "Re-arm"
+                                : "Arm"
+                        }
+                        variant="secondary"
+                        size="sm"
+                        icon={canary.status === "armed" ? "pause" : "flag"}
+                        disabled={busyId !== null}
+                        onClick={() => void handleToggleCanary(canary)}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="grow col" style={{ gap: 2, minWidth: 0 }}>
-                  <span className="m ell">{canary.name}</span>
-                  <span className="xs muted">Bait file in {canary.folder}</span>
-                </div>
-                <Chip
-                  label={canary.status}
-                  tone={canary.status === "Paused" ? "neutral" : "accent"}
-                />
-              </div>
-              <hr className="hr" />
-              <div className="row wrap between" style={{ gap: 10 }}>
-                <span className="sm muted">{canary.detail}</span>
-                <div className="row" style={{ gap: 6 }}>
-                  <Button
-                    label="Test trigger"
-                    variant="ghost"
-                    size="sm"
-                    icon="bell"
-                    onClick={() => handleTestTrigger(canary)}
-                  />
-                  <Button
-                    label={
-                      canary.status === "Armed"
-                        ? "Pause"
-                        : canary.status === "Triggered"
-                          ? "Re-arm"
-                          : "Arm"
-                    }
-                    variant="secondary"
-                    size="sm"
-                    icon={canary.status === "Armed" ? "pause" : "flag"}
-                    onClick={() => handleToggleCanary(canary.id)}
-                  />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+              )
+            })}
+          </div>
+        )}
 
         <div className="col" style={{ gap: 12 }}>
           <h2 className="h2">Trigger history</h2>
@@ -240,84 +313,50 @@ export default function CanariesPage() {
             <div style={{ minWidth: 680 }}>
               <div
                 className="thead"
-                style={{ gridTemplateColumns: "1.3fr 1.2fr 1.4fr 1fr" }}
+                style={{ gridTemplateColumns: "1.2fr 1.2fr 1.4fr 1fr" }}
               >
                 <span>When</span>
                 <span>Canary</span>
                 <span>Source</span>
                 <span>Result</span>
               </div>
-              {history.map((row) => (
-                <div
-                  key={row.id}
-                  className="trow"
-                  style={{ gridTemplateColumns: "1.3fr 1.2fr 1.4fr 1fr" }}
-                >
-                  <span className="sm m">{row.when}</span>
-                  <span className="sm ell">{row.canary}</span>
-                  <span className="sm muted">{row.source}</span>
-                  <div>
-                    <Chip
-                      label={row.result}
-                      tone={row.result === "Alert sent" ? "accent" : "neutral"}
-                      icon={row.result === "Alert sent" ? "bell" : undefined}
-                    />
-                  </div>
+              {history.length === 0 ? (
+                <div className="col center muted" style={{ padding: "28px 20px" }}>
+                  <span className="sm">No trigger events recorded yet.</span>
                 </div>
-              ))}
+              ) : (
+                history.map((row) => (
+                  <div
+                    key={row.id}
+                    className="trow"
+                    style={{ gridTemplateColumns: "1.2fr 1.2fr 1.4fr 1fr" }}
+                  >
+                    <span className="sm m">{formatTimeOrDate(row.when)}</span>
+                    <span className="sm ell">{row.canaryName}</span>
+                    <span className="sm muted">{row.source}</span>
+                    <div>
+                      <Chip
+                        label={
+                          row.result === "alert_sent"
+                            ? "Alert sent"
+                            : "Ignored"
+                        }
+                        tone={row.result === "alert_sent" ? "accent" : "neutral"}
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
 
-        <form
-          onSubmit={handleArmNew}
-          className="glass card row wrap"
-          style={{ gap: 12, alignItems: "flex-end" }}
-        >
-          <div className="col" style={{ gap: 6, flex: "1 1 200px" }}>
-            <label htmlFor="canary-name-input" className="xs b">
-              New canary name
-            </label>
-            <input
-              id="canary-name-input"
-              ref={inputRef}
-              className="input"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="e.g. payroll-2026.xlsx"
-              aria-label="Canary name"
-            />
+        {toast ? (
+          <div className="toast">
+            <Icon glyph="check" size={14} /> {toast}
           </div>
-          <Seg
-            options={["Email", "Push", "Both"]}
-            value={channel}
-            onChange={(val) => setChannel(val as AlertChannel)}
-            aria-label="Alert channel"
-          />
-          <Button
-            type="submit"
-            label="Arm canary"
-            variant="primary"
-            size="md"
-            icon="flag"
-            disabled={!newName.trim()}
-          />
-        </form>
+        ) : null}
       </main>
-
-      {toast ? (
-        <div role="status" className="toast" style={{ position: "fixed" }}>
-          <span>{toast.message}</span>
-          {toast.undo ? (
-            <Button
-              label="Undo"
-              variant="secondary"
-              size="sm"
-              onClick={toast.undo}
-            />
-          ) : null}
-        </div>
-      ) : null}
     </div>
   )
 }

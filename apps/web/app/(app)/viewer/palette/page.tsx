@@ -3,7 +3,9 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Icon, resolveBoardHref } from "@workspace/ui/components/glashus"
+import { Icon } from "@workspace/ui/components/glashus"
+import { exposureToUi, formatBytes } from "@/lib/format"
+import { useFiles } from "@/lib/queries"
 
 interface PaletteItem {
   id: string
@@ -16,54 +18,6 @@ interface PaletteItem {
   keywords?: string
 }
 
-const FILE_ITEMS: readonly PaletteItem[] = [
-  {
-    id: "file-tax-return",
-    section: "Files",
-    icon: "file",
-    label: "tax-return-2025.pdf",
-    meta: " · Public",
-    href: "Viewer.dc.html",
-    keywords: "pdf public tax return 2025",
-  },
-  {
-    id: "file-tax-notes",
-    section: "Files",
-    icon: "file",
-    label: "tax-notes.md",
-    meta: " · Private",
-    href: "Viewer.dc.html",
-    keywords: "markdown private tax notes",
-  },
-  {
-    id: "file-api-config",
-    section: "Files",
-    icon: "file",
-    label: "api-config.env",
-    meta: " · Private",
-    href: "Viewer.dc.html",
-    keywords: "env secret masked config",
-  },
-  {
-    id: "file-customers",
-    section: "Files",
-    icon: "file",
-    label: "customers.xlsx",
-    meta: " · Shared",
-    href: "Viewer.dc.html",
-    keywords: "excel spreadsheet customers",
-  },
-  {
-    id: "file-site-plan",
-    section: "Files",
-    icon: "image",
-    label: "site-plan.png",
-    meta: " · Private",
-    href: "Viewer.dc.html",
-    keywords: "png image design plan",
-  },
-]
-
 const COMMAND_ITEMS: readonly PaletteItem[] = [
   {
     id: "cmd-share",
@@ -71,7 +25,7 @@ const COMMAND_ITEMS: readonly PaletteItem[] = [
     icon: "share",
     label: "Share a file…",
     shortcut: "S",
-    href: "Share.dc.html",
+    href: "/sharing/share",
     keywords: "share link public permission",
   },
   {
@@ -80,7 +34,7 @@ const COMMAND_ITEMS: readonly PaletteItem[] = [
     icon: "shield",
     label: "Open scan report",
     shortcut: "G R",
-    href: "Scan.dc.html",
+    href: "/sharing/scan",
     keywords: "scan report dlp sensitive findings",
   },
   {
@@ -89,8 +43,17 @@ const COMMAND_ITEMS: readonly PaletteItem[] = [
     icon: "drive",
     label: "Go to Drive",
     shortcut: "G D",
-    href: "Main.dc.html",
+    href: "/drive",
     keywords: "drive home files",
+  },
+  {
+    id: "cmd-folders",
+    section: "Commands",
+    icon: "folder",
+    label: "Open folders",
+    shortcut: "G F",
+    href: "/drive/folders",
+    keywords: "folders tree drive",
   },
   {
     id: "cmd-shared",
@@ -98,7 +61,7 @@ const COMMAND_ITEMS: readonly PaletteItem[] = [
     icon: "link",
     label: "Go to Shared by me",
     shortcut: "G S",
-    href: "Shared.dc.html",
+    href: "/sharing",
     keywords: "shared links exposure",
   },
   {
@@ -107,7 +70,7 @@ const COMMAND_ITEMS: readonly PaletteItem[] = [
     icon: "upload",
     label: "Upload files",
     shortcut: "U",
-    href: "Upload.dc.html",
+    href: "/drive/upload",
     keywords: "upload add files",
   },
   {
@@ -115,7 +78,7 @@ const COMMAND_ITEMS: readonly PaletteItem[] = [
     section: "Commands",
     icon: "graph",
     label: "Open exposure map",
-    href: "Exposure.dc.html",
+    href: "/ai/exposure",
     keywords: "exposure map graph",
   },
   {
@@ -123,17 +86,32 @@ const COMMAND_ITEMS: readonly PaletteItem[] = [
     section: "Commands",
     icon: "clock",
     label: "Open AI access log",
-    href: "AILog.dc.html",
+    href: "/ai/log",
     keywords: "ai log gemini audit",
   },
   {
-    id: "cmd-shortcuts",
+    id: "cmd-activity",
     section: "Commands",
-    icon: "info",
-    label: "Keyboard shortcuts",
-    shortcut: "?",
-    href: "Shortcuts.dc.html",
-    keywords: "keyboard shortcuts help",
+    icon: "clock",
+    label: "Open activity timeline",
+    href: "/ai/activity",
+    keywords: "activity audit timeline events",
+  },
+  {
+    id: "cmd-canaries",
+    section: "Commands",
+    icon: "flag",
+    label: "Open canaries",
+    href: "/ai/canaries",
+    keywords: "canaries bait alerts",
+  },
+  {
+    id: "cmd-settings",
+    section: "Commands",
+    icon: "sliders",
+    label: "Open settings",
+    href: "/drive/settings",
+    keywords: "settings quotas ai consent security",
   },
 ]
 
@@ -148,17 +126,37 @@ function matchesQuery(item: PaletteItem, normalizedQuery: string): boolean {
 
 export default function PalettePage() {
   const router = useRouter()
-  const [query, setQuery] = React.useState("tax")
+  const { data: driveFiles = [] } = useFiles({ trashed: false })
+  const [query, setQuery] = React.useState("")
   const [activeIndex, setActiveIndex] = React.useState(0)
   const inputRef = React.useRef<HTMLInputElement | null>(null)
   const itemRefs = React.useRef<Array<HTMLAnchorElement | null>>([])
 
   const normalizedQuery = query.trim().toLowerCase()
 
+  const allFileItems = React.useMemo<PaletteItem[]>(
+    () =>
+      driveFiles.map((f) => {
+        const vis = exposureToUi(f.exposure)
+        return {
+          id: `file-${f.id}`,
+          section: "Files",
+          icon: f.mime.startsWith("image/") ? "image" : "file",
+          label: f.name,
+          meta: ` · ${vis.label} · ${formatBytes(f.size)}`,
+          href: `/viewer?fileId=${encodeURIComponent(f.id)}`,
+          keywords: `${f.mime} ${f.exposure} ${f.scanStatus}`,
+        }
+      }),
+    [driveFiles]
+  )
+
   const files = React.useMemo(() => {
-    if (!normalizedQuery) return FILE_ITEMS.slice(0, 3)
-    return FILE_ITEMS.filter((item) => matchesQuery(item, normalizedQuery))
-  }, [normalizedQuery])
+    if (!normalizedQuery) return allFileItems.slice(0, 5)
+    return allFileItems
+      .filter((item) => matchesQuery(item, normalizedQuery))
+      .slice(0, 8)
+  }, [allFileItems, normalizedQuery])
 
   const commands = React.useMemo(() => {
     if (!normalizedQuery) return COMMAND_ITEMS.slice(0, 4)
@@ -179,8 +177,8 @@ export default function PalettePage() {
       label: trimmed ? `Ask my files: “${trimmed}”` : "Ask my files…",
       shortcut: "↵",
       href: trimmed
-        ? `${resolveBoardHref("Ask.dc.html")}?q=${encodeURIComponent(trimmed)}`
-        : resolveBoardHref("Ask.dc.html"),
+        ? `/ai/ask?q=${encodeURIComponent(trimmed)}`
+        : "/ai/ask",
     }
   }, [query])
 
@@ -212,7 +210,7 @@ export default function PalettePage() {
       inputRef.current?.focus()
       return
     }
-    router.push(resolveBoardHref("Main.dc.html"))
+    router.push("/drive")
   }, [query.length, router])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -235,7 +233,7 @@ export default function PalettePage() {
       const selected = visibleItems[safeIndex]
       if (!selected) return
       e.preventDefault()
-      router.push(resolveBoardHref(selected.href))
+      router.push(selected.href)
       return
     }
     if (e.key === "Escape") {
@@ -292,8 +290,8 @@ export default function PalettePage() {
               setQuery(e.target.value)
               setActiveIndex(0)
             }}
-            placeholder="Search or run a command"
-            aria-label="Search or run a command"
+            placeholder="Search files or run a command"
+            aria-label="Search files or run a command"
           />
           <button
             type="button"
@@ -328,7 +326,7 @@ export default function PalettePage() {
                     ref={(el) => {
                       itemRefs.current[idx] = el
                     }}
-                    href={resolveBoardHref(item.href)}
+                    href={item.href}
                     role="option"
                     aria-selected={selected}
                     onMouseEnter={() => setActiveIndex(idx)}
@@ -368,7 +366,7 @@ export default function PalettePage() {
                     ref={(el) => {
                       itemRefs.current[idx] = el
                     }}
-                    href={resolveBoardHref(item.href)}
+                    href={item.href}
                     role="option"
                     aria-selected={selected}
                     onMouseEnter={() => setActiveIndex(idx)}

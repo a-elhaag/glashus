@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "version": "0.1.0",
+    "version": "0.2.0",
     "title": "Glashus API",
     "description": "Exposure-aware personal cloud drive API. Clients never name bucket paths directly."
   },
@@ -70,7 +70,11 @@
           },
           "email": {
             "type": "string",
-            "format": "email",
+            "example": "anas@example.com"
+          },
+          "alertEmail": {
+            "type": "string",
+            "default": "",
             "example": "anas@example.com"
           },
           "plan": {
@@ -88,6 +92,31 @@
           },
           "aiMode": {
             "$ref": "#/components/schemas/AiMode"
+          },
+          "massAlerts": {
+            "type": "boolean",
+            "default": true
+          },
+          "canaryAlerts": {
+            "type": "boolean",
+            "default": true
+          },
+          "weeklySummary": {
+            "type": "boolean",
+            "default": false
+          },
+          "requirePinOnPublic": {
+            "type": "boolean",
+            "default": true
+          },
+          "defaultExpiryDays": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "default": 7
+          },
+          "vaultHint": {
+            "type": "string",
+            "default": ""
           },
           "createdAt": {
             "type": "string",
@@ -180,18 +209,184 @@
           "message"
         ]
       },
-      "FolderListResponse": {
+      "UpdateMeRequest": {
         "type": "object",
         "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "alertEmail": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "string",
+                "enum": [
+                  ""
+                ]
+              }
+            ]
+          },
+          "aiMode": {
+            "$ref": "#/components/schemas/AiMode"
+          },
+          "massAlerts": {
+            "type": "boolean"
+          },
+          "canaryAlerts": {
+            "type": "boolean"
+          },
+          "weeklySummary": {
+            "type": "boolean"
+          },
+          "requirePinOnPublic": {
+            "type": "boolean"
+          },
+          "defaultExpiryDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365
+          },
+          "vaultHint": {
+            "type": "string",
+            "maxLength": 240
+          }
+        }
+      },
+      "ExposureSummaryResponse": {
+        "type": "object",
+        "properties": {
+          "score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "publicLinks": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sensitiveFindings": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "armedCanaries": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "risks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExposureRisk"
+            }
+          }
+        },
+        "required": [
+          "score",
+          "publicLinks",
+          "sensitiveFindings",
+          "armedCanaries",
+          "risks"
+        ]
+      },
+      "ExposureRisk": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "public_link",
+              "never_expires",
+              "sensitive_shared"
+            ]
+          },
+          "fileId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "shareId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "detail": {
+            "type": "string",
+            "minLength": 1
+          },
+          "actionLabel": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "fileId",
+          "shareId",
+          "title",
+          "detail",
+          "actionLabel"
+        ]
+      },
+      "ExportManifestResponse": {
+        "type": "object",
+        "properties": {
+          "exportedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserProfile"
+          },
           "folders": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Folder"
             }
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FileRecord"
+            }
+          },
+          "shares": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShareRecord"
+            }
+          },
+          "auditCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "aiReadCount": {
+            "type": "integer",
+            "minimum": 0
           }
         },
         "required": [
-          "folders"
+          "exportedAt",
+          "user",
+          "folders",
+          "files",
+          "shares",
+          "auditCount",
+          "aiReadCount"
         ]
       },
       "Folder": {
@@ -249,49 +444,6 @@
           "allow"
         ]
       },
-      "CreateFolderRequest": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255,
-            "example": "Receipts"
-          },
-          "parentId": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "default": null,
-            "example": null
-          },
-          "aiConsent": {
-            "$ref": "#/components/schemas/AiConsent"
-          },
-          "vault": {
-            "type": "boolean",
-            "default": false
-          }
-        },
-        "required": [
-          "name"
-        ]
-      },
-      "FileListResponse": {
-        "type": "object",
-        "properties": {
-          "files": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/FileRecord"
-            }
-          }
-        },
-        "required": [
-          "files"
-        ]
-      },
       "FileRecord": {
         "type": "object",
         "properties": {
@@ -339,12 +491,35 @@
             "minimum": 0,
             "default": 0
           },
+          "originalBlocked": {
+            "type": "boolean",
+            "default": false
+          },
+          "hasRedactedCopy": {
+            "type": "boolean",
+            "default": false
+          },
           "trashedAt": {
             "type": [
               "string",
               "null"
             ],
             "format": "date-time",
+            "default": null
+          },
+          "purgeAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "default": null
+          },
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ],
             "default": null
           },
           "createdAt": {
@@ -384,6 +559,1038 @@
           "shared",
           "link",
           "public"
+        ]
+      },
+      "ShareRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fileId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fileName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fileMime": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fileSize": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "ownerUid": {
+            "type": "string",
+            "minLength": 1
+          },
+          "audience": {
+            "$ref": "#/components/schemas/ShareAudience"
+          },
+          "recipientEmail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "maxDownloads": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "downloads": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "hasPin": {
+            "type": "boolean"
+          },
+          "redacted": {
+            "type": "boolean"
+          },
+          "revokedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "default": null
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "fileId",
+          "fileName",
+          "fileMime",
+          "fileSize",
+          "ownerUid",
+          "audience",
+          "expiresAt",
+          "maxDownloads",
+          "downloads",
+          "hasPin",
+          "redacted",
+          "createdAt"
+        ]
+      },
+      "ShareAudience": {
+        "type": "string",
+        "enum": [
+          "anyone",
+          "specific_people"
+        ]
+      },
+      "FolderListResponse": {
+        "type": "object",
+        "properties": {
+          "folders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Folder"
+            }
+          }
+        },
+        "required": [
+          "folders"
+        ]
+      },
+      "CreateFolderRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "example": "Receipts"
+          },
+          "parentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null,
+            "example": null
+          },
+          "aiConsent": {
+            "$ref": "#/components/schemas/AiConsent"
+          },
+          "vault": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "UpdateFolderRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "parentId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "aiConsent": {
+            "$ref": "#/components/schemas/AiConsent"
+          },
+          "vault": {
+            "type": "boolean"
+          }
+        }
+      },
+      "OkResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "ok"
+        ]
+      },
+      "FileListResponse": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FileRecord"
+            }
+          }
+        },
+        "required": [
+          "files"
+        ]
+      },
+      "RequestUploadUrlResponse": {
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uploadUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "expiresInSeconds": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "example": 60
+          }
+        },
+        "required": [
+          "fileId",
+          "uploadUrl",
+          "expiresInSeconds"
+        ]
+      },
+      "RequestUploadUrlRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "folderId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "mime": {
+            "type": "string",
+            "minLength": 1,
+            "default": "application/octet-stream"
+          },
+          "size": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "name",
+          "size"
+        ]
+      },
+      "CompleteUploadResponse": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/FileRecord"
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            }
+          },
+          "blockedReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "file",
+          "findings",
+          "blockedReason"
+        ]
+      },
+      "Finding": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1,
+            "example": "IBAN"
+          },
+          "location": {
+            "type": "string",
+            "example": "Line 14"
+          },
+          "maskedValue": {
+            "type": "string",
+            "example": "DE89 •••• •••• 3000"
+          },
+          "detector": {
+            "type": "string",
+            "enum": [
+              "dlp",
+              "regex",
+              "entropy"
+            ],
+            "example": "regex"
+          },
+          "safe": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "location",
+          "maskedValue",
+          "detector"
+        ]
+      },
+      "UpdateFileRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "folderId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trashed": {
+            "type": "boolean"
+          },
+          "originalBlocked": {
+            "type": "boolean"
+          }
+        }
+      },
+      "EmptyTrashResponse": {
+        "type": "object",
+        "properties": {
+          "deletedCount": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "deletedCount"
+        ]
+      },
+      "DownloadUrlResponse": {
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "mime": {
+            "type": "string",
+            "minLength": 1
+          },
+          "downloadUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "expiresInSeconds": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "example": 60
+          }
+        },
+        "required": [
+          "fileId",
+          "name",
+          "mime",
+          "downloadUrl",
+          "expiresInSeconds"
+        ]
+      },
+      "FileFindingsResponse": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/FileRecord"
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            }
+          }
+        },
+        "required": [
+          "file",
+          "findings"
+        ]
+      },
+      "UpdateFindingRequest": {
+        "type": "object",
+        "properties": {
+          "safe": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "safe"
+        ]
+      },
+      "ShareListResponse": {
+        "type": "object",
+        "properties": {
+          "shares": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShareRecord"
+            }
+          }
+        },
+        "required": [
+          "shares"
+        ]
+      },
+      "CreateShareResponse": {
+        "type": "object",
+        "properties": {
+          "share": {
+            "$ref": "#/components/schemas/ShareRecord"
+          },
+          "pin": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sharePath": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "share",
+          "pin",
+          "sharePath"
+        ]
+      },
+      "CreateShareRequest": {
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "audience": {
+            "$ref": "#/components/schemas/ShareAudience"
+          },
+          "recipientEmail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "email"
+          },
+          "expiryDays": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 365,
+            "default": 7
+          },
+          "maxDownloads": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 5
+          },
+          "requirePin": {
+            "type": "boolean",
+            "default": true
+          },
+          "redacted": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "fileId"
+        ]
+      },
+      "RevokePublicResponse": {
+        "type": "object",
+        "properties": {
+          "revokedCount": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "revokedCount"
+        ]
+      },
+      "PublicShareInfoResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fileName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fileMime": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fileSize": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "ownerName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "redacted": {
+            "type": "boolean"
+          },
+          "hasPin": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "downloadsRemaining": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "expired": {
+            "type": "boolean"
+          },
+          "revoked": {
+            "type": "boolean"
+          },
+          "limitReached": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "fileName",
+          "fileMime",
+          "fileSize",
+          "ownerName",
+          "redacted",
+          "hasPin",
+          "expiresAt",
+          "downloadsRemaining",
+          "expired",
+          "revoked",
+          "limitReached"
+        ]
+      },
+      "UnlockShareResponse": {
+        "type": "object",
+        "properties": {
+          "downloadUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "expiresInSeconds": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "downloadsRemaining": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          }
+        },
+        "required": [
+          "downloadUrl",
+          "expiresInSeconds",
+          "downloadsRemaining"
+        ]
+      },
+      "UnlockShareRequest": {
+        "type": "object",
+        "properties": {
+          "pin": {
+            "type": "string",
+            "maxLength": 12
+          }
+        }
+      },
+      "AuditListResponse": {
+        "type": "object",
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditEvent"
+            }
+          }
+        },
+        "required": [
+          "events"
+        ]
+      },
+      "AuditEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "action": {
+            "type": "string",
+            "minLength": 1,
+            "example": "file.upload"
+          },
+          "category": {
+            "$ref": "#/components/schemas/AuditCategory"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "detail": {
+            "type": "string",
+            "default": ""
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1,
+            "example": "fil_01JABC"
+          },
+          "actor": {
+            "type": "string",
+            "minLength": 1
+          },
+          "device": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "ip": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "time": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "action",
+          "category",
+          "title",
+          "target",
+          "actor",
+          "time"
+        ]
+      },
+      "AuditCategory": {
+        "type": "string",
+        "enum": [
+          "files",
+          "sharing",
+          "ai",
+          "security"
+        ]
+      },
+      "AiLogListResponse": {
+        "type": "object",
+        "properties": {
+          "reads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AiLogEntry"
+            }
+          },
+          "weeklyReads": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "totalMasked": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "reads",
+          "weeklyReads",
+          "totalMasked"
+        ]
+      },
+      "AiLogEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fileId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fileName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "folderName": {
+            "type": "string",
+            "default": "Drive"
+          },
+          "consentMode": {
+            "type": "string",
+            "default": "ask"
+          },
+          "purpose": {
+            "type": "string",
+            "minLength": 1,
+            "example": "ask_my_files"
+          },
+          "sentSummary": {
+            "type": "string"
+          },
+          "maskedCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "example": "gemini-2.5-flash"
+          },
+          "time": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "fileId",
+          "fileName",
+          "purpose",
+          "sentSummary",
+          "maskedCount",
+          "model",
+          "time"
+        ]
+      },
+      "CanaryListResponse": {
+        "type": "object",
+        "properties": {
+          "canaries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Canary"
+            }
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CanaryTrigger"
+            }
+          }
+        },
+        "required": [
+          "canaries",
+          "history"
+        ]
+      },
+      "Canary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ownerUid": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fileId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "folderId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "folderName": {
+            "type": "string",
+            "default": "Drive"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CanaryStatus"
+          },
+          "channel": {
+            "$ref": "#/components/schemas/CanaryChannel"
+          },
+          "detail": {
+            "type": "string",
+            "default": "Never opened. Checked every request."
+          },
+          "lastTriggeredAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "ownerUid",
+          "fileId",
+          "name",
+          "status",
+          "lastTriggeredAt",
+          "createdAt"
+        ]
+      },
+      "CanaryStatus": {
+        "type": "string",
+        "enum": [
+          "armed",
+          "triggered",
+          "paused"
+        ]
+      },
+      "CanaryChannel": {
+        "type": "string",
+        "enum": [
+          "email",
+          "push",
+          "both"
+        ],
+        "default": "both"
+      },
+      "CanaryTrigger": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "canaryId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "canaryName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "when": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "alert_sent",
+              "ignored"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "canaryId",
+          "canaryName",
+          "when",
+          "source",
+          "result"
+        ]
+      },
+      "CreateCanaryRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "folderId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "channel": {
+            "$ref": "#/components/schemas/CanaryChannel"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "UpdateCanaryRequest": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "armed",
+              "paused"
+            ]
+          },
+          "channel": {
+            "$ref": "#/components/schemas/CanaryChannel"
+          }
+        }
+      },
+      "AskFilesResponse": {
+        "type": "object",
+        "properties": {
+          "answer": {
+            "type": "string"
+          },
+          "citations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AskCitation"
+            }
+          },
+          "maskedCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "ignoredCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "consentBlocked": {
+            "type": "boolean"
+          },
+          "consentMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "answer",
+          "citations",
+          "maskedCount",
+          "ignoredCount",
+          "consentBlocked",
+          "consentMessage"
+        ]
+      },
+      "AskCitation": {
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fileName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "detail": {
+            "type": "string",
+            "minLength": 1
+          },
+          "excerpt": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "fileId",
+          "fileName",
+          "detail",
+          "excerpt"
+        ]
+      },
+      "AskFilesRequest": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "folderId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "question"
         ]
       }
     },
@@ -441,6 +1648,116 @@
             }
           }
         }
+      },
+      "patch": {
+        "tags": [
+          "Account"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated user profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/exposure": {
+      "get": {
+        "tags": [
+          "Exposure"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Live exposure score and actionable exposure risks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExposureSummaryResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/export": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "JSON export manifest of all user Drive metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportManifestResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/folders": {
@@ -465,7 +1782,7 @@
             }
           },
           "401": {
-            "description": "Missing or invalid Firebase JWT",
+            "description": "Unauthorized",
             "content": {
               "application/json": {
                 "schema": {
@@ -506,8 +1823,8 @@
               }
             }
           },
-          "400": {
-            "description": "Validation error",
+          "401": {
+            "description": "Unauthorized",
             "content": {
               "application/json": {
                 "schema": {
@@ -515,9 +1832,97 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/v1/folders/{id}": {
+      "patch": {
+        "tags": [
+          "Drive"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFolderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Folder updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Folder"
+                }
+              }
+            }
           },
-          "401": {
-            "description": "Missing or invalid Firebase JWT",
+          "404": {
+            "description": "Folder not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Drive"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Folder deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Folder not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -542,17 +1947,28 @@
         "parameters": [
           {
             "schema": {
-              "type": "string",
-              "example": "fld_root"
+              "type": "string"
             },
             "required": false,
             "name": "folderId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "required": false,
+            "name": "trashed",
             "in": "query"
           }
         ],
         "responses": {
           "200": {
-            "description": "Non-trashed files owned by the authenticated user",
+            "description": "Files owned by the authenticated user",
             "content": {
               "application/json": {
                 "schema": {
@@ -562,11 +1978,976 @@
             }
           },
           "401": {
-            "description": "Missing or invalid Firebase JWT",
+            "description": "Unauthorized",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/files/upload-url": {
+      "post": {
+        "tags": [
+          "Drive"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestUploadUrlRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "60-second signed upload URL targeting quarantine bucket",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestUploadUrlResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Storage quota exceeded or invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/files/{id}/complete-upload": {
+      "post": {
+        "tags": [
+          "Drive"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Quarantine scan finished and file promoted or blocked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompleteUploadResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "File record or uploaded object not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/files/{id}": {
+      "patch": {
+        "tags": [
+          "Drive"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFileRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "File updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileRecord"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "File not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Drive"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File permanently deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "File not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/files/{id}/restore": {
+      "post": {
+        "tags": [
+          "Drive"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File restored from trash",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileRecord"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "File not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/trash/empty": {
+      "post": {
+        "tags": [
+          "Drive"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "All trashed files permanently removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmptyTrashResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/files/{id}/download-url": {
+      "post": {
+        "tags": [
+          "Drive"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "required": false,
+            "name": "inline",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "60-second signed download URL for clean file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadUrlResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "File not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Monthly download cap reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/files/{id}/findings": {
+      "get": {
+        "tags": [
+          "Security"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Masked sensitive findings for a file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileFindingsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "File not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/files/{id}/findings/{findingId}": {
+      "patch": {
+        "tags": [
+          "Security"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "findingId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFindingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Finding updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Finding"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "File or finding not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/files/{id}/rescan": {
+      "post": {
+        "tags": [
+          "Security"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Re-ran deterministic scanner on file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileFindingsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/files/{id}/redacted-copy": {
+      "post": {
+        "tags": [
+          "Security"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Generated redacted copy in clean bucket",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileRecord"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/shares": {
+      "get": {
+        "tags": [
+          "Sharing"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Active and recent share links created by the user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Sharing"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateShareRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Share link created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateShareResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Original sharing blocked or ownership failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/shares/{id}": {
+      "delete": {
+        "tags": [
+          "Sharing"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Share link revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/shares/revoke-public": {
+      "post": {
+        "tags": [
+          "Sharing"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked all active public links",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevokePublicResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/public/shares/{shareId}": {
+      "get": {
+        "tags": [
+          "Public Sharing"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "shareId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Public metadata for a share link",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicShareInfoResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Share link not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/public/shares/{shareId}/unlock": {
+      "post": {
+        "tags": [
+          "Public Sharing"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "shareId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnlockShareRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Share unlocked and 60s signed download URL issued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnlockShareResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid PIN or link revoked/expired/limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Share not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Owner monthly download cap reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/audit": {
+      "get": {
+        "tags": [
+          "Activity"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Audit events for the authenticated user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ai/log": {
+      "get": {
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "AI access log entries for the authenticated user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiLogListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/canaries": {
+      "get": {
+        "tags": [
+          "Security"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Canary bait files and trigger history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanaryListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Security"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCanaryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Canary created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Canary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/canaries/{id}": {
+      "patch": {
+        "tags": [
+          "Security"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCanaryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Canary updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Canary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/canaries/{id}/test": {
+      "post": {
+        "tags": [
+          "Security"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Simulated test trigger logged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CanaryTrigger"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Canary is paused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ai/ask": {
+      "post": {
+        "tags": [
+          "AI"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskFilesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Consent-gated grounded response across consented Drive files",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AskFilesResponse"
                 }
               }
             }

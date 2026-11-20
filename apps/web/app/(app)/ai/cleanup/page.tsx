@@ -3,75 +3,42 @@
 import * as React from "react"
 import {
   Button,
-  FileTile,
+  Chip,
   Icon,
   PageHead,
-  Sidebar,
 } from "@workspace/ui/components/glashus"
+import { AppSidebar } from "@/components/app-sidebar"
+import { glashusApi } from "@/lib/api"
+import { formatBytes } from "@/lib/format"
+import {
+  type FileData,
+  unwrapApi,
+  useFiles,
+  useInvalidateDrive,
+  useMe,
+  useShares,
+} from "@/lib/queries"
 
-interface CleanupItem {
+interface CleanupSuggestion {
   id: string
-  ext: string
-  name: string
-  why: string
-  sizeLabel: string
-  sizeGb: number
+  kind: "duplicate" | "never_expires" | "blocked"
+  title: string
+  reason: string
+  reclaimBytes: number
   actionLabel: string
-  actionVariant: "primary" | "secondary"
-  actionIcon: "trash" | "link"
-  reclaimsStorage: boolean
-  toastText: string
+  fileId?: string
+  shareId?: string
 }
 
-const INITIAL_SUGGESTIONS: CleanupItem[] = [
-  {
-    id: "dup-backup",
-    ext: "ZIP",
-    name: "backup-2025.zip and backup-2025 (1).zip",
-    why: "Why: Same content, same checksum. One copy is enough.",
-    sizeLabel: "412 MB",
-    sizeGb: 0.412,
-    actionLabel: "Move 1 to trash",
-    actionVariant: "secondary",
-    actionIcon: "trash",
-    reclaimsStorage: true,
-    toastText: "Moved 1 copy to trash (412 MB reclaimed)",
-  },
-  {
-    id: "stale-recording",
-    ext: "MP4",
-    name: "screen-recording-march.mp4",
-    why: "Why: Not opened in 14 months, shared with nobody.",
-    sizeLabel: "640 MB",
-    sizeGb: 0.64,
-    actionLabel: "Move to trash",
-    actionVariant: "secondary",
-    actionIcon: "trash",
-    reclaimsStorage: true,
-    toastText: "Moved screen-recording-march.mp4 to trash",
-  },
-  {
-    id: "old-lease",
-    ext: "PDF",
-    name: "old-lease-2019.pdf",
-    why: "Why: Not opened in 3 years. A public link still works.",
-    sizeLabel: "2 MB",
-    sizeGb: 0.002,
-    actionLabel: "Expire link",
-    actionVariant: "primary",
-    actionIcon: "link",
-    reclaimsStorage: false,
-    toastText: "Public link expired for old-lease-2019.pdf",
-  },
-]
-
 export default function CleanupPage() {
-  const [resolvedIds, setResolvedIds] = React.useState<string[]>([])
+  const { data: me } = useMe()
+  const { data: files = [], isLoading } = useFiles({ trashed: false })
+  const { data: shares = [] } = useShares()
+  const invalidate = useInvalidateDrive()
+
   const [dismissedIds, setDismissedIds] = React.useState<string[]>([])
-  const [toast, setToast] = React.useState<{
-    message: string
-    undo?: () => void
-  } | null>(null)
+  const [busyId, setBusyId] = React.useState<string | null>(null)
+  const [toast, setToast] = React.useState<string | null>(null)
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   React.useEffect(() => {
@@ -80,83 +47,165 @@ export default function CleanupPage() {
     }
   }, [])
 
-  function showToast(message: string, undo?: () => void) {
+  const notify = React.useCallback((msg: string) => {
     if (timerRef.current) clearTimeout(timerRef.current)
-    setToast({ message, undo })
-    timerRef.current = setTimeout(() => setToast(null), 5000)
-  }
+    setToast(msg)
+    timerRef.current = setTimeout(() => setToast(null), 3200)
+  }, [])
 
-  const visibleSuggestions = INITIAL_SUGGESTIONS.filter(
-    (item) => !resolvedIds.includes(item.id) && !dismissedIds.includes(item.id)
-  )
+  const breakdown = React.useMemo(() => {
+    let video = 0
+    let images = 0
+    let docs = 0
+    let other = 0
+    for (const f of files) {
+      const m = f.mime.toLowerCase()
+      if (m.startsWith("video/")) video += f.size
+      else if (m.startsWith("image/")) images += f.size
+      else if (
+        m.includes("pdf") ||
+        m.startsWith("text/") ||
+        m.includes("document") ||
+        m.includes("sheet")
+      ) {
+        docs += f.size
+      } else {
+        other += f.size
+      }
+    }
+    const total = Math.max(1, video + images + docs + other)
+    return {
+      videoPct: Math.round((video / total) * 100),
+      imagesPct: Math.round((images / total) * 100),
+      docsPct: Math.round((docs / total) * 100),
+      otherPct: Math.round((other / total) * 100),
+    }
+  }, [files])
 
-  const reclaimedGb = INITIAL_SUGGESTIONS.filter(
-    (item) => resolvedIds.includes(item.id) && item.reclaimsStorage
-  ).reduce((sum, item) => sum + item.sizeGb, 0)
+  const suggestions = React.useMemo<CleanupSuggestion[]>(() => {
+    const list: CleanupSuggestion[] = []
+    const byHash = new Map<string, FileData[]>()
+    for (const f of files) {
+      if (f.sha256) {
+        const arr = byHash.get(f.sha256) ?? []
+        arr.push(f)
+        byHash.set(f.sha256, arr)
+      }
+      if (f.scanStatus === "blocked") {
+        list.push({
+          id: `blocked-${f.id}`,
+          kind: "blocked",
+          title: `Quarantined file: ${f.name}`,
+          reason: "Blocked during security scan. Safe to move to Trash.",
+          reclaimBytes: f.size,
+          actionLabel: "Move to Trash",
+          fileId: f.id,
+        })
+      }
+    }
 
-  const remainingReclaimableGb = visibleSuggestions.reduce(
-    (sum, item) => sum + item.sizeGb,
+    for (const [, group] of byHash) {
+      if (group.length > 1) {
+        const sorted = [...group].sort((a, b) =>
+          b.updatedAt.localeCompare(a.updatedAt)
+        )
+        const original = sorted[0]!
+        for (const dup of sorted.slice(1)) {
+          list.push({
+            id: `dup-${dup.id}`,
+            kind: "duplicate",
+            title: `Duplicate file: ${dup.name}`,
+            reason: `Identical SHA-256 content hash to ${original.name}.`,
+            reclaimBytes: dup.size,
+            actionLabel: "Trash duplicate",
+            fileId: dup.id,
+          })
+        }
+      }
+    }
+
+    for (const s of shares) {
+      if (!s.revokedAt && s.expiresAt === null) {
+        list.push({
+          id: `share-${s.id}`,
+          kind: "never_expires",
+          title: `Permanent share link: ${s.fileName}`,
+          reason:
+            s.audience === "anyone"
+              ? "Public link has no expiry date."
+              : "Shared link never expires automatically.",
+          reclaimBytes: 0,
+          actionLabel: "Revoke link",
+          shareId: s.id,
+        })
+      }
+    }
+
+    return list.filter((item) => !dismissedIds.includes(item.id))
+  }, [dismissedIds, files, shares])
+
+  const reclaimableBytes = suggestions.reduce(
+    (sum, item) => sum + item.reclaimBytes,
     0
   )
 
-  const usedGb = Math.max(0, 3.2 - reclaimedGb)
-  const reclaimableDisplay =
-    remainingReclaimableGb >= 1
-      ? `${remainingReclaimableGb.toFixed(1)} GB`
-      : remainingReclaimableGb > 0
-        ? `${Math.round(remainingReclaimableGb * 1000)} MB`
-        : "0 MB"
-
-  function handleAction(item: CleanupItem) {
-    const prev = resolvedIds
-    setResolvedIds((ids) => [...ids, item.id])
-    showToast(item.toastText, () => {
-      setResolvedIds(prev)
-      setToast(null)
-    })
+  const handleApply = async (item: CleanupSuggestion) => {
+    setBusyId(item.id)
+    try {
+      if (item.fileId) {
+        unwrapApi(
+          await glashusApi.PATCH("/v1/files/{id}", {
+            params: { path: { id: item.fileId } },
+            body: { trashed: true },
+          })
+        )
+        notify(`Moved file to Trash`)
+      } else if (item.shareId) {
+        unwrapApi(
+          await glashusApi.DELETE("/v1/shares/{id}", {
+            params: { path: { id: item.shareId } },
+          })
+        )
+        notify(`Revoked permanent share link`)
+      }
+      invalidate()
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Action failed.")
+    } finally {
+      setBusyId(null)
+    }
   }
 
-  function handleDismiss(item: CleanupItem) {
-    const prev = dismissedIds
-    setDismissedIds((ids) => [...ids, item.id])
-    showToast(`Dismissed ${item.name}`, () => {
-      setDismissedIds(prev)
-      setToast(null)
-    })
-  }
-
-  function handleResetAll() {
-    setResolvedIds([])
-    setDismissedIds([])
-    setToast(null)
-  }
+  const user = me?.user
+  const usedBytes = user?.bytesUsed ?? 0
+  const quotaBytes = user?.storageQuotaBytes ?? 10 * 1024 * 1024 * 1024
 
   return (
     <div className="app" style={{ minHeight: 900, position: "relative" }}>
-      <Sidebar
-        active="cleanup"
-        storageText={`${usedGb.toFixed(1)} of 15 GB`}
-        storagePercent={Math.round((usedGb / 15) * 100)}
-      />
+      <AppSidebar active="cleanup" />
       <main className="main">
         <PageHead
           title="Cleanup"
-          sub="Suggestions always say why. Nothing is deleted without a click."
-          cta="none"
-          ctaIcon="upload"
+          sub="Live duplicate detection, blocked uploads, and unbounded share links. Nothing runs without your click."
+          cta="Trash"
+          ctaIcon="trash"
+          ctaHref="/drive/trash"
         />
 
         <div className="glass card col" style={{ gap: 14 }}>
-          <div className="row between">
-            <h2 className="h2">{usedGb.toFixed(1)} of 15 GB used</h2>
+          <div className="row between wrap" style={{ gap: 8 }}>
+            <h2 className="h2">
+              {formatBytes(usedBytes)} of {formatBytes(quotaBytes)} used
+            </h2>
             <span className="sm muted">
-              {reclaimableDisplay} can be reclaimed
+              {formatBytes(reclaimableBytes)} reclaimable from{" "}
+              {suggestions.length} item(s)
             </span>
           </div>
           <div className="bar" style={{ height: 12, display: "flex" }}>
             <i
               style={{
-                width: "40%",
+                width: `${breakdown.videoPct}%`,
                 background: "var(--ink)",
                 display: "block",
                 height: "100%",
@@ -164,7 +213,7 @@ export default function CleanupPage() {
             />
             <i
               style={{
-                width: "28%",
+                width: `${breakdown.imagesPct}%`,
                 background: "var(--accent)",
                 display: "block",
                 height: "100%",
@@ -172,7 +221,7 @@ export default function CleanupPage() {
             />
             <i
               style={{
-                width: "18%",
+                width: `${breakdown.docsPct}%`,
                 background: "rgba(17,17,17,0.45)",
                 display: "block",
                 height: "100%",
@@ -180,7 +229,7 @@ export default function CleanupPage() {
             />
             <i
               style={{
-                width: "14%",
+                width: `${breakdown.otherPct}%`,
                 background: "rgba(17,17,17,0.18)",
                 display: "block",
                 height: "100%",
@@ -188,14 +237,18 @@ export default function CleanupPage() {
             />
           </div>
           <div className="row wrap xs muted" style={{ gap: 18 }}>
-            <span>Video 40%</span>
-            <span>Photos 28%</span>
-            <span>Documents 18%</span>
-            <span>Other 14%</span>
+            <span>Video {breakdown.videoPct}%</span>
+            <span>Images {breakdown.imagesPct}%</span>
+            <span>Documents {breakdown.docsPct}%</span>
+            <span>Other {breakdown.otherPct}%</span>
           </div>
         </div>
 
-        {visibleSuggestions.length === 0 ? (
+        {isLoading ? (
+          <div className="glass card" style={{ padding: 24 }}>
+            <span className="sm muted">Analyzing Drive usage…</span>
+          </div>
+        ) : suggestions.length === 0 ? (
           <div
             className="glass card col center"
             style={{ padding: "36px 24px", gap: 10 }}
@@ -203,68 +256,71 @@ export default function CleanupPage() {
             <div className="tile n">
               <Icon glyph="check" size={20} />
             </div>
-            <span className="m">No cleanup suggestions left</span>
+            <span className="m">Your Drive looks tidy</span>
             <span className="sm muted">
-              Every duplicate, stale file and old link has been handled or
-              dismissed.
+              No duplicate files, blocked uploads, or unbounded links found.
             </span>
-            <Button
-              label="Review suggestions again"
-              variant="secondary"
-              size="sm"
-              icon="rotate"
-              onClick={handleResetAll}
-            />
+            {dismissedIds.length > 0 ? (
+              <Button
+                label="Show dismissed items"
+                variant="secondary"
+                size="sm"
+                icon="rotate"
+                onClick={() => setDismissedIds([])}
+              />
+            ) : null}
           </div>
         ) : (
-          visibleSuggestions.map((item) => (
-            <div
-              key={item.id}
-              className="glass card row wrap"
-              style={{ gap: 14, padding: "16px 20px" }}
-            >
-              <FileTile ext={item.ext} tone={0} size={40} />
+          <div className="col" style={{ gap: 12 }}>
+            {suggestions.map((item) => (
               <div
-                className="grow col"
-                style={{ gap: 3, minWidth: 240 }}
+                key={item.id}
+                className="glass card row wrap between"
+                style={{ gap: 14 }}
               >
-                <span className="m">{item.name}</span>
-                <span className="sm muted">{item.why}</span>
+                <div className="col" style={{ gap: 4, flex: "1 1 280px" }}>
+                  <div className="row wrap" style={{ gap: 8 }}>
+                    <span className="m">{item.title}</span>
+                    {item.reclaimBytes > 0 ? (
+                      <Chip
+                        label={formatBytes(item.reclaimBytes)}
+                        tone="clear"
+                      />
+                    ) : (
+                      <Chip label="Exposure hygiene" tone="accent" />
+                    )}
+                  </div>
+                  <span className="sm muted">{item.reason}</span>
+                </div>
+                <div className="row" style={{ gap: 8 }}>
+                  <Button
+                    label="Dismiss"
+                    size="sm"
+                    variant="ghost"
+                    disabled={busyId !== null}
+                    onClick={() =>
+                      setDismissedIds((prev) => [...prev, item.id])
+                    }
+                  />
+                  <Button
+                    label={busyId === item.id ? "Applying…" : item.actionLabel}
+                    size="sm"
+                    variant={item.kind === "duplicate" ? "secondary" : "danger"}
+                    disabled={busyId !== null}
+                    onClick={() => void handleApply(item)}
+                  />
+                </div>
               </div>
-              <span className="sm muted">{item.sizeLabel}</span>
-              <div className="row" style={{ gap: 8 }}>
-                <Button
-                  label="Dismiss"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleDismiss(item)}
-                />
-                <Button
-                  label={item.actionLabel}
-                  variant={item.actionVariant}
-                  size="sm"
-                  icon={item.actionIcon}
-                  onClick={() => handleAction(item)}
-                />
-              </div>
-            </div>
-          ))
+            ))}
+          </div>
         )}
-      </main>
 
-      {toast ? (
-        <div role="status" className="toast" style={{ position: "fixed" }}>
-          <span>{toast.message}</span>
-          {toast.undo ? (
-            <Button
-              label="Undo"
-              variant="secondary"
-              size="sm"
-              onClick={toast.undo}
-            />
-          ) : null}
-        </div>
-      ) : null}
+        {toast ? (
+          <div className="toast">
+            <Icon glyph="check" size={14} /> {toast}
+          </div>
+        ) : null}
+      </main>
     </div>
   )
 }

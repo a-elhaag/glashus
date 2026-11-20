@@ -11,15 +11,28 @@ import {
   Icon,
   PageHead,
   Seg,
-  Sidebar,
   Switch,
-  resolveBoardHref,
 } from "@workspace/ui/components/glashus"
+import { AppSidebar } from "@/components/app-sidebar"
+import { glashusApi } from "@/lib/api"
+import {
+  exposureToUi,
+  extractExt,
+  formatBytes,
+  formatShortDate,
+} from "@/lib/format"
+import {
+  unwrapApi,
+  uploadFileToGlashus,
+  useFiles,
+  useFolders,
+  useInvalidateDrive,
+} from "@/lib/queries"
 
 type DriveItem = {
   id: string
   name: string
-  folder?: boolean
+  folder: boolean
   count?: number
   ext: string
   tone: 0 | 1 | 2
@@ -31,10 +44,7 @@ type DriveItem = {
 }
 
 type MenuEntry =
-  | {
-      kind: "sep"
-      id: string
-    }
+  | { kind: "sep"; id: string }
   | {
       kind: "link"
       id: string
@@ -59,97 +69,6 @@ type MenuState = {
   kind: "item" | "bg"
 } | null
 
-type ToastState = {
-  msg: string
-  undo?: () => void
-} | null
-
-const BASE_ITEMS: DriveItem[] = [
-  {
-    id: "notes",
-    name: "Research notes",
-    folder: true,
-    count: 12,
-    ext: "DIR",
-    tone: 0,
-    vis: "Private",
-    visTone: "clear",
-    mod: "Nov 12",
-  },
-  {
-    id: "sources",
-    name: "Sources",
-    folder: true,
-    count: 8,
-    ext: "DIR",
-    tone: 1,
-    vis: "Shared",
-    visTone: "neutral",
-    mod: "Oct 30",
-  },
-  {
-    id: "draft",
-    name: "thesis-draft-v4.docx",
-    ext: "DOC",
-    tone: 0,
-    vis: "Private",
-    visTone: "clear",
-    mod: "Nov 12",
-    size: "640 KB",
-  },
-  {
-    id: "fig",
-    name: "figure-3-results.png",
-    ext: "PNG",
-    tone: 1,
-    vis: "Shared",
-    visTone: "neutral",
-    mod: "Nov 11",
-    size: "412 KB",
-  },
-  {
-    id: "survey",
-    name: "survey-data.csv",
-    ext: "CSV",
-    tone: 2,
-    vis: "Public",
-    visTone: "accent",
-    mod: "Nov 4",
-    size: "82 KB",
-    flag: "Email addresses found",
-  },
-  {
-    id: "refs",
-    name: "references.pdf",
-    ext: "PDF",
-    tone: 0,
-    vis: "Private",
-    visTone: "clear",
-    mod: "Oct 21",
-    size: "2.4 MB",
-  },
-  {
-    id: "slides",
-    name: "defense-slides.pdf",
-    ext: "PDF",
-    tone: 0,
-    vis: "Private",
-    visTone: "clear",
-    mod: "Oct 15",
-    size: "6.1 MB",
-  },
-  {
-    id: "audio",
-    name: "interview-01.m4a",
-    ext: "M4A",
-    tone: 0,
-    vis: "Private",
-    visTone: "clear",
-    mod: "Oct 8",
-    size: "18 MB",
-  },
-]
-
 const SHORTCUT_ROWS: Array<{ label: string; key: string }> = [
   { label: "Move selection", key: "↑ ↓" },
   { label: "Extend selection", key: "⇧ ↑ ↓" },
@@ -159,7 +78,6 @@ const SHORTCUT_ROWS: Array<{ label: string; key: string }> = [
   { label: "Move to trash", key: "⌫" },
   { label: "New folder", key: "N" },
   { label: "List or grid", key: "V" },
-  { label: "Search and commands", key: "⌘K" },
   { label: "This sheet", key: "?" },
   { label: "Close or clear", key: "esc" },
 ]
@@ -180,6 +98,10 @@ function hasTextSelectionOutsideItems(target: EventTarget | null): boolean {
 
 export default function FolderPage() {
   const router = useRouter()
+  const foldersQuery = useFolders()
+  const filesQuery = useFiles({ trashed: false })
+  const invalidateDrive = useInvalidateDrive()
+
   const rootRef = React.useRef<HTMLDivElement | null>(null)
   const menuRef = React.useRef<HTMLDivElement | null>(null)
   const moveDialogRef = React.useRef<HTMLDivElement | null>(null)
@@ -188,6 +110,9 @@ export default function FolderPage() {
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const newFolderInputId = React.useId()
 
+  const [currentFolderId, setCurrentFolderId] = React.useState<string | null>(
+    null
+  )
   const [view, setView] = React.useState<"list" | "grid">("list")
   const [selected, setSelected] = React.useState<string[]>([])
   const [anchorId, setAnchorId] = React.useState<string | null>(null)
@@ -202,13 +127,9 @@ export default function FolderPage() {
   const [dragId, setDragId] = React.useState<string | null>(null)
   const [overId, setOverId] = React.useState<string | null>(null)
   const [extOpen, setExtOpen] = React.useState(false)
-  const [moved, setMoved] = React.useState<Record<string, string>>({})
-  const [trashed, setTrashed] = React.useState<string[]>([])
-  const [customFolders, setCustomFolders] = React.useState<
-    Array<{ id: string; name: string }>
-  >([])
   const [search, setSearch] = React.useState("")
-  const [toast, setToast] = React.useState<ToastState>(null)
+  const [busy, setBusy] = React.useState(false)
+  const [toastMsg, setToastMsg] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     return () => {
@@ -216,52 +137,102 @@ export default function FolderPage() {
     }
   }, [])
 
-  const say = React.useCallback((msg: string, undo?: () => void) => {
+  const say = React.useCallback((msg: string) => {
     if (timerRef.current) clearTimeout(timerRef.current)
-    setToast({ msg, undo })
-    timerRef.current = setTimeout(() => {
-      setToast(null)
-    }, 5000)
+    setToastMsg(msg)
+    timerRef.current = setTimeout(() => setToastMsg(null), 5000)
   }, [])
 
+  const folders = React.useMemo(
+    () => foldersQuery.data ?? [],
+    [foldersQuery.data]
+  )
+  const files = React.useMemo(() => filesQuery.data ?? [], [filesQuery.data])
+
+  const folderMap = React.useMemo(
+    () => new Map(folders.map((f) => [f.id, f])),
+    [folders]
+  )
+
+  const breadcrumbs = React.useMemo(() => {
+    const chain: Array<{ id: string | null; name: string }> = []
+    let cursor = currentFolderId
+    const seen = new Set<string>()
+    while (cursor && !seen.has(cursor)) {
+      seen.add(cursor)
+      const f = folderMap.get(cursor)
+      if (!f) break
+      chain.unshift({ id: f.id, name: f.name })
+      cursor = f.parentId
+    }
+    return [{ id: null, name: "Drive" }, ...chain]
+  }, [currentFolderId, folderMap])
+
+  const currentFolderName =
+    breadcrumbs[breadcrumbs.length - 1]?.name ?? "Drive"
+
   const allItems = React.useMemo<DriveItem[]>(() => {
-    const next = [...BASE_ITEMS]
-    const created: DriveItem[] = customFolders.map((f) => ({
-      id: f.id,
-      name: f.name,
-      folder: true,
-      count: 0,
-      ext: "DIR",
-      tone: 0,
-      vis: "Private",
-      visTone: "clear",
-      mod: "Just now",
-    }))
-    next.splice(2, 0, ...created)
-    return next
-  }, [customFolders])
+    const childCounts = new Map<string, number>()
+    for (const f of folders) {
+      if (f.parentId) {
+        childCounts.set(f.parentId, (childCounts.get(f.parentId) ?? 0) + 1)
+      }
+    }
+    for (const file of files) {
+      if (file.folderId) {
+        childCounts.set(
+          file.folderId,
+          (childCounts.get(file.folderId) ?? 0) + 1
+        )
+      }
+    }
+
+    const folderItems: DriveItem[] = folders
+      .filter((f) => f.parentId === currentFolderId)
+      .map((f) => ({
+        id: f.id,
+        name: f.name,
+        folder: true,
+        count: childCounts.get(f.id) ?? 0,
+        ext: "DIR",
+        tone: f.vault ? 2 : 0,
+        vis: f.vault ? "Vault" : f.aiConsent === "allow" ? "AI Allow" : "Private",
+        visTone: f.vault ? "accent" : "clear",
+        mod: formatShortDate(f.updatedAt),
+      }))
+
+    const fileItems: DriveItem[] = files
+      .filter((f) => f.folderId === currentFolderId)
+      .map((f) => {
+        const vis = exposureToUi(f.exposure)
+        return {
+          id: f.id,
+          name: f.name,
+          folder: false,
+          ext: extractExt(f.name),
+          tone: vis.tileTone,
+          vis: vis.label,
+          visTone: vis.visTone,
+          mod: formatShortDate(f.updatedAt),
+          size: formatBytes(f.size),
+          flag:
+            f.findingCount > 0
+              ? `${f.findingCount} finding${f.findingCount === 1 ? "" : "s"}`
+              : undefined,
+        }
+      })
+
+    return [...folderItems, ...fileItems]
+  }, [folders, files, currentFolderId])
 
   const visibleItems = React.useMemo(() => {
     const query = search.trim().toLowerCase()
+    if (!query) return allItems
     return allItems.filter((x) => {
-      if (moved[x.id] || trashed.includes(x.id)) return false
-      if (query) {
-        const hay = `${x.name} ${x.flag ?? ""} ${x.vis}`.toLowerCase()
-        if (!hay.includes(query)) return false
-      }
-      return true
+      const hay = `${x.name} ${x.flag ?? ""} ${x.vis}`.toLowerCase()
+      return hay.includes(query)
     })
-  }, [allItems, moved, trashed, search])
-
-  const folderCounts = React.useMemo(() => {
-    const counts: Record<string, number> = {}
-    for (const [itemId, targetId] of Object.entries(moved)) {
-      if (!trashed.includes(itemId)) {
-        counts[targetId] = (counts[targetId] ?? 0) + 1
-      }
-    }
-    return counts
-  }, [moved, trashed])
+  }, [allItems, search])
 
   const selectedItems = React.useMemo(
     () => visibleItems.filter((x) => selected.includes(x.id)),
@@ -270,10 +241,10 @@ export default function FolderPage() {
 
   const moveTargetFolders = React.useMemo(
     () =>
-      visibleItems.filter(
-        (x) => x.folder === true && !selected.includes(x.id)
+      folders.filter(
+        (f) => f.id !== currentFolderId && !selected.includes(f.id)
       ),
-    [visibleItems, selected]
+    [folders, currentFolderId, selected]
   )
 
   const computeMenuPoint = React.useCallback(
@@ -318,78 +289,221 @@ export default function FolderPage() {
     setMoveOpen(true)
   }, [])
 
+  const openFolder = React.useCallback((folderId: string | null) => {
+    setCurrentFolderId(folderId)
+    setSelected([])
+    setAnchorId(null)
+    setMenu(null)
+  }, [])
+
   const trashItems = React.useCallback(
-    (idsToTrash?: string[]) => {
+    async (idsToTrash?: string[]) => {
       const ids = idsToTrash ?? selected
       if (ids.length === 0) return
-      const prev = trashed
-      setTrashed((cur) => [...cur, ...ids.filter((id) => !cur.includes(id))])
-      setSelected([])
       setMenu(null)
-      say(
-        `${ids.length} ${ids.length === 1 ? "item" : "items"} moved to trash`,
-        () => {
-          setTrashed(prev)
-          setToast(null)
+      setBusy(true)
+      try {
+        for (const id of ids) {
+          const item = allItems.find((x) => x.id === id)
+          if (!item) continue
+          if (item.folder) {
+            unwrapApi(
+              await glashusApi.DELETE("/v1/folders/{id}", {
+                params: { path: { id } },
+              })
+            )
+          } else {
+            unwrapApi(
+              await glashusApi.PATCH("/v1/files/{id}", {
+                params: { path: { id } },
+                body: { trashed: true },
+              })
+            )
+          }
         }
-      )
+        setSelected([])
+        invalidateDrive()
+        say(
+          `Moved ${ids.length} ${ids.length === 1 ? "item" : "items"} out of folder`
+        )
+      } catch (err) {
+        say(err instanceof Error ? err.message : "Delete failed")
+      } finally {
+        setBusy(false)
+      }
     },
-    [selected, trashed, say]
+    [selected, allItems, invalidateDrive, say]
   )
 
   const moveItemsTo = React.useCallback(
-    (sourceIds: string[], targetId: string) => {
-      const ids = sourceIds.filter((id) => id && id !== targetId)
+    async (sourceIds: string[], targetFolderId: string | null) => {
+      const ids = sourceIds.filter((id) => id && id !== targetFolderId)
       if (ids.length === 0) return
-      const targetFolder = allItems.find((x) => x.id === targetId)
-      if (!targetFolder) return
-      const prev = moved
-      const next = { ...prev }
-      for (const id of ids) {
-        next[id] = targetId
-      }
-      setMoved(next)
-      setSelected([])
+      setMoveOpen(false)
       setDragId(null)
       setOverId(null)
-      setMoveOpen(false)
-      say(
-        `Moved ${ids.length} ${ids.length === 1 ? "item" : "items"} to ${targetFolder.name}`,
-        () => {
-          setMoved(prev)
-          setToast(null)
+      setBusy(true)
+      try {
+        for (const id of ids) {
+          const item = allItems.find((x) => x.id === id)
+          if (!item) continue
+          if (item.folder) {
+            unwrapApi(
+              await glashusApi.PATCH("/v1/folders/{id}", {
+                params: { path: { id } },
+                body: { parentId: targetFolderId },
+              })
+            )
+          } else {
+            unwrapApi(
+              await glashusApi.PATCH("/v1/files/{id}", {
+                params: { path: { id } },
+                body: { folderId: targetFolderId },
+              })
+            )
+          }
         }
-      )
+        setSelected([])
+        invalidateDrive()
+        const targetName = targetFolderId
+          ? (folderMap.get(targetFolderId)?.name ?? "folder")
+          : "Drive root"
+        say(
+          `Moved ${ids.length} ${ids.length === 1 ? "item" : "items"} to ${targetName}`
+        )
+      } catch (err) {
+        say(err instanceof Error ? err.message : "Move failed")
+      } finally {
+        setBusy(false)
+      }
     },
-    [allItems, moved, say]
+    [allItems, folderMap, invalidateDrive, say]
   )
 
   const handleCreateFolder = React.useCallback(
-    (e: React.FormEvent) => {
+    async (e: React.FormEvent) => {
       e.preventDefault()
-      const trimmed = newFolderName.trim()
-      const baseTitle = trimmed || "Untitled folder"
-      const existingNames = new Set(allItems.map((x) => x.name.toLowerCase()))
-      let finalName = baseTitle
-      let suffix = 2
-      while (existingNames.has(finalName.toLowerCase())) {
-        finalName = `${baseTitle} ${suffix}`
-        suffix += 1
+      const name = newFolderName.trim() || "Untitled folder"
+      setBusy(true)
+      try {
+        const created = unwrapApi(
+          await glashusApi.POST("/v1/folders", {
+            body: {
+              name,
+              parentId: currentFolderId,
+              aiConsent: "off",
+              vault: false,
+            },
+          })
+        )
+        setNewFolderOpen(false)
+        setNewFolderName("")
+        setSelected([created.id])
+        setAnchorId(created.id)
+        invalidateDrive()
+        say(`Created folder "${created.name}"`)
+      } catch (err) {
+        say(err instanceof Error ? err.message : "Could not create folder")
+      } finally {
+        setBusy(false)
       }
-      const newId = `folder-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-      const prevFolders = customFolders
-      setCustomFolders((prev) => [...prev, { id: newId, name: finalName }])
-      setNewFolderOpen(false)
-      setNewFolderName("")
-      setSelected([newId])
-      setAnchorId(newId)
-      say(`Created folder "${finalName}"`, () => {
-        setCustomFolders(prevFolders)
-        setSelected((cur) => cur.filter((id) => id !== newId))
-        setToast(null)
-      })
     },
-    [newFolderName, allItems, customFolders, say]
+    [newFolderName, currentFolderId, invalidateDrive, say]
+  )
+
+  const handleDownloadSelected = React.useCallback(
+    async (fileId?: string) => {
+      const targetId =
+        fileId ?? selectedItems.find((item) => !item.folder)?.id
+      if (!targetId) return
+      setMenu(null)
+      try {
+        const res = unwrapApi(
+          await glashusApi.POST("/v1/files/{id}/download-url", {
+            params: { path: { id: targetId } },
+          })
+        )
+        window.open(res.downloadUrl, "_blank", "noopener,noreferrer")
+        say(`Download started for ${res.name}`)
+      } catch (err) {
+        say(err instanceof Error ? err.message : "Download failed")
+      }
+    },
+    [selectedItems, say]
+  )
+
+  const handleQuickShare = React.useCallback(async () => {
+    const fileItem = selectedItems.find((item) => !item.folder)
+    if (!fileItem) {
+      say("Select a file to create a share link")
+      return
+    }
+    const expiryDays =
+      shareExpiry === "1 day"
+        ? 1
+        : shareExpiry === "7 days"
+          ? 7
+          : shareExpiry === "30 days"
+            ? 30
+            : null
+    setBusy(true)
+    try {
+      const created = unwrapApi(
+        await glashusApi.POST("/v1/shares", {
+          body: {
+            fileId: fileItem.id,
+            audience: "anyone",
+            expiryDays,
+            maxDownloads: 5,
+            requirePin: sharePin,
+            redacted: Boolean(fileItem.flag),
+          },
+        })
+      )
+      setShareOpen(false)
+      invalidateDrive()
+      const fullUrl = `${window.location.origin}${created.sharePath}`
+      try {
+        await navigator.clipboard?.writeText(fullUrl)
+      } catch {
+        // Clipboard optional
+      }
+      say(
+        created.pin
+          ? `Link copied · PIN ${created.pin}`
+          : "Share link created and copied"
+      )
+    } catch (err) {
+      say(err instanceof Error ? err.message : "Could not create share link")
+    } finally {
+      setBusy(false)
+    }
+  }, [selectedItems, shareExpiry, sharePin, invalidateDrive, say])
+
+  const handleDesktopDrop = React.useCallback(
+    async (fileList: FileList) => {
+      const dropped = Array.from(fileList)
+      if (dropped.length === 0) return
+      say(`Uploading ${dropped.length} file(s) to quarantine…`)
+      let cleanCount = 0
+      let blockedCount = 0
+      for (const file of dropped) {
+        try {
+          const res = await uploadFileToGlashus(file, currentFolderId)
+          if (res.blockedReason) blockedCount += 1
+          else cleanCount += 1
+        } catch {
+          blockedCount += 1
+        }
+      }
+      invalidateDrive()
+      say(
+        blockedCount > 0
+          ? `Uploaded ${cleanCount} clean · ${blockedCount} blocked`
+          : `${cleanCount} file(s) scanned and ready`
+      )
+    },
+    [currentFolderId, invalidateDrive, say]
   )
 
   const handleItemClick = React.useCallback(
@@ -427,7 +541,6 @@ export default function FolderPage() {
     [visibleItems, anchorId]
   )
 
-  // Focus first menu item whenever context menu opens
   React.useEffect(() => {
     if (!menu) return
     const frame = requestAnimationFrame(() => {
@@ -439,7 +552,6 @@ export default function FolderPage() {
     return () => cancelAnimationFrame(frame)
   }, [menu])
 
-  // Focus folder name input when New Folder dialog opens
   React.useEffect(() => {
     if (!newFolderOpen) return
     const frame = requestAnimationFrame(() => {
@@ -452,7 +564,6 @@ export default function FolderPage() {
     return () => cancelAnimationFrame(frame)
   }, [newFolderOpen, newFolderInputId])
 
-  // Focus dialog containers when modal opens without an input field
   React.useEffect(() => {
     if (!moveOpen) return
     const frame = requestAnimationFrame(() => moveDialogRef.current?.focus())
@@ -471,7 +582,6 @@ export default function FolderPage() {
     return () => cancelAnimationFrame(frame)
   }, [keysOpen])
 
-  // Global keyboard shortcuts
   React.useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const key = e.key
@@ -484,26 +594,20 @@ export default function FolderPage() {
         }
         return
       }
-
       if (isEditableTarget(e.target)) return
-
       if (key === "?") {
         e.preventDefault()
         setMenu(null)
         setKeysOpen((cur) => !cur)
         return
       }
-
-      if (shareOpen || newFolderOpen || moveOpen || keysOpen || menu) {
-        return
-      }
+      if (shareOpen || newFolderOpen || moveOpen || keysOpen || menu) return
 
       if ((e.metaKey || e.ctrlKey) && key.toLowerCase() === "a") {
         e.preventDefault()
         setSelected(visibleItems.map((x) => x.id))
         return
       }
-
       if (e.metaKey || e.ctrlKey || e.altKey) return
 
       if (key === "v" || key === "V") {
@@ -511,31 +615,26 @@ export default function FolderPage() {
         setView((cur) => (cur === "list" ? "grid" : "list"))
         return
       }
-
       if (key === "n" || key === "N") {
         e.preventDefault()
         openNewFolderModal()
         return
       }
-
       if ((key === "s" || key === "S") && selected.length > 0) {
         e.preventDefault()
         openShareModal()
         return
       }
-
       if ((key === "m" || key === "M") && selected.length > 0) {
         e.preventDefault()
         openMoveModal()
         return
       }
-
       if ((key === "Delete" || key === "Backspace") && selected.length > 0) {
         e.preventDefault()
-        trashItems()
+        void trashItems()
         return
       }
-
       if (
         key === "Enter" &&
         selected.length === 1 &&
@@ -547,14 +646,13 @@ export default function FolderPage() {
         const single = visibleItems.find((x) => x.id === selected[0])
         if (single && !single.folder) {
           e.preventDefault()
-          router.push(resolveBoardHref("Viewer.dc.html"))
+          router.push(`/viewer?fileId=${encodeURIComponent(single.id)}`)
         } else if (single?.folder) {
           e.preventDefault()
-          say(`Opened folder "${single.name}"`)
+          openFolder(single.id)
         }
         return
       }
-
       if (
         key === "ArrowDown" ||
         key === "ArrowUp" ||
@@ -597,20 +695,51 @@ export default function FolderPage() {
     openShareModal,
     openMoveModal,
     trashItems,
+    openFolder,
     router,
-    say,
   ])
 
+  const singleSelected = selectedItems[0]
   const menuEntries = React.useMemo<MenuEntry[]>(() => {
     if (!menu) return []
-    if (menu.kind === "item") {
+    if (menu.kind === "item" && singleSelected) {
+      if (singleSelected.folder) {
+        return [
+          {
+            kind: "btn",
+            id: "open-folder",
+            label: "Open folder",
+            icon: "folder",
+            kbd: "↵",
+            onSelect: () => openFolder(singleSelected.id),
+          },
+          {
+            kind: "btn",
+            id: "move",
+            label: "Move to…",
+            icon: "folder",
+            kbd: "M",
+            onSelect: openMoveModal,
+          },
+          { kind: "sep", id: "sep-folder" },
+          {
+            kind: "btn",
+            id: "delete-folder",
+            label: "Delete folder",
+            icon: "trash",
+            kbd: "⌫",
+            danger: true,
+            onSelect: () => void trashItems([singleSelected.id]),
+          },
+        ]
+      }
       return [
         {
           kind: "link",
           id: "open",
           label: "Open",
           icon: "eye",
-          href: resolveBoardHref("Viewer.dc.html"),
+          href: `/viewer?fileId=${encodeURIComponent(singleSelected.id)}`,
           kbd: "↵",
         },
         {
@@ -623,24 +752,10 @@ export default function FolderPage() {
         },
         {
           kind: "btn",
-          id: "copy",
-          label: "Copy link",
-          icon: "link",
-          onSelect: () => {
-            setMenu(null)
-            say("Link copied")
-          },
-        },
-        { kind: "sep", id: "sep1" },
-        {
-          kind: "btn",
           id: "download",
           label: "Download",
           icon: "download",
-          onSelect: () => {
-            setMenu(null)
-            say("Download started")
-          },
+          onSelect: () => void handleDownloadSelected(singleSelected.id),
         },
         {
           kind: "btn",
@@ -655,7 +770,7 @@ export default function FolderPage() {
           id: "scan",
           label: "Scan report",
           icon: "shield",
-          href: resolveBoardHref("Scan.dc.html"),
+          href: `/sharing/scan?fileId=${encodeURIComponent(singleSelected.id)}`,
         },
         { kind: "sep", id: "sep2" },
         {
@@ -665,7 +780,7 @@ export default function FolderPage() {
           icon: "trash",
           kbd: "⌫",
           danger: true,
-          onSelect: () => trashItems(),
+          onSelect: () => void trashItems(),
         },
       ]
     }
@@ -683,7 +798,7 @@ export default function FolderPage() {
         id: "upload",
         label: "Upload files",
         icon: "upload",
-        href: resolveBoardHref("Upload.dc.html"),
+        href: "/drive/upload",
       },
       { kind: "sep", id: "sep-bg-1" },
       {
@@ -723,13 +838,15 @@ export default function FolderPage() {
     ]
   }, [
     menu,
+    singleSelected,
     view,
     visibleItems,
+    openFolder,
     openShareModal,
     openMoveModal,
     openNewFolderModal,
+    handleDownloadSelected,
     trashItems,
-    say,
   ])
 
   const handleMenuKeyDown = React.useCallback(
@@ -741,42 +858,26 @@ export default function FolderPage() {
       )
       if (items.length === 0) return
       const activeIdx = items.findIndex((el) => el === document.activeElement)
-
       if (e.key === "ArrowDown") {
         e.preventDefault()
-        e.stopPropagation()
-        const next = items[(activeIdx + 1) % items.length]
-        next?.focus()
+        items[(activeIdx + 1) % items.length]?.focus()
       } else if (e.key === "ArrowUp") {
         e.preventDefault()
-        e.stopPropagation()
-        const prev = items[(activeIdx - 1 + items.length) % items.length]
-        prev?.focus()
-      } else if (e.key === "Home") {
-        e.preventDefault()
-        e.stopPropagation()
-        items[0]?.focus()
-      } else if (e.key === "End") {
-        e.preventDefault()
-        e.stopPropagation()
-        items[items.length - 1]?.focus()
+        items[(activeIdx - 1 + items.length) % items.length]?.focus()
       } else if (e.key === "Escape") {
         e.preventDefault()
-        e.stopPropagation()
-        setMenu(null)
-      } else if (e.key === "Tab") {
         setMenu(null)
       }
     },
     []
   )
 
-  const singleSelected = selectedItems[0]
   const shareTitleName =
     selectedItems.length === 1 && singleSelected
       ? singleSelected.name
       : `${selectedItems.length} items`
   const shareHasFlag = selectedItems.some((x) => Boolean(x.flag))
+  const singleFile = selectedItems.find((x) => !x.folder)
 
   return (
     <div
@@ -796,13 +897,10 @@ export default function FolderPage() {
         }
       }}
       onContextMenu={(e) => {
-        if (e.shiftKey) return
-        if (isEditableTarget(e.target)) return
+        if (e.shiftKey || isEditableTarget(e.target)) return
         if (
           e.target instanceof Element &&
-          e.target.closest(
-            "a, nav[aria-label='Primary'], .scrim, .menu, .toast, button"
-          )
+          e.target.closest("a, nav[aria-label='Primary'], .scrim, .menu, .toast, button")
         ) {
           return
         }
@@ -827,45 +925,55 @@ export default function FolderPage() {
         }
       }}
       onDrop={(e) => {
-        if (extOpen) {
+        if (extOpen && e.dataTransfer?.files?.length) {
           e.preventDefault()
-          const count = e.dataTransfer?.files?.length || 1
           setExtOpen(false)
-          say(
-            `${count} ${count === 1 ? "file" : "files"} sent to quarantine for scanning`
-          )
+          void handleDesktopDrop(e.dataTransfer.files)
         }
       }}
     >
-      <Sidebar active="folders" />
+      <AppSidebar active="folders" />
 
       <main className="main">
         <PageHead
-          title="Thesis"
-          sub="Projects / Thesis"
+          title={currentFolderName}
+          sub={breadcrumbs.map((b) => b.name).join(" / ")}
           cta="Upload"
           ctaIcon="upload"
+          ctaHref="/drive/upload"
           searchValue={search}
           onSearchChange={setSearch}
         />
 
         <div className="row wrap between">
           <nav className="row sm" style={{ gap: 6 }} aria-label="Breadcrumb">
-            <Link href={resolveBoardHref("Main.dc.html")} className="muted">
-              Drive
-            </Link>
-            <Icon glyph="chevR" size={14} />
-            <Link href={resolveBoardHref("Folder.dc.html")} className="muted">
-              Projects
-            </Link>
-            <Icon glyph="chevR" size={14} />
-            <span className="m">Thesis</span>
+            {breadcrumbs.map((crumb, idx) => (
+              <React.Fragment key={crumb.id ?? "root"}>
+                {idx > 0 ? <Icon glyph="chevR" size={14} /> : null}
+                {idx < breadcrumbs.length - 1 ? (
+                  <button
+                    type="button"
+                    className="muted"
+                    style={{
+                      border: 0,
+                      background: "transparent",
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
+                    onClick={() => openFolder(crumb.id)}
+                  >
+                    {crumb.name}
+                  </button>
+                ) : (
+                  <span className="m">{crumb.name}</span>
+                )}
+              </React.Fragment>
+            ))}
           </nav>
 
           <div className="row wrap" style={{ gap: 10 }}>
             <span className="xs muted">
-              Right-click a file · drag onto a folder · press{" "}
-              <span className="kbd">?</span>
+              Double-click folder to open · press <span className="kbd">?</span>
             </span>
             <div className="seg" role="group" aria-label="View">
               <button
@@ -907,17 +1015,18 @@ export default function FolderPage() {
           </div>
         </div>
 
+        {foldersQuery.isLoading || filesQuery.isLoading ? (
+          <div className="glass col center muted" style={{ borderRadius: 20, padding: 40 }}>
+            Loading folders and files…
+          </div>
+        ) : null}
+
         {view === "list" && visibleItems.length > 0 ? (
-          <div
-            className="glass"
-            style={{ overflowX: "auto", borderRadius: 20 }}
-          >
+          <div className="glass" style={{ overflowX: "auto", borderRadius: 20 }}>
             <div style={{ minWidth: 720 }}>
               <div
                 className="thead"
-                style={{
-                  gridTemplateColumns: "2.6fr 1.2fr 1fr 0.8fr 40px",
-                }}
+                style={{ gridTemplateColumns: "2.6fr 1.2fr 1fr 0.8fr 40px" }}
               >
                 <span>Name</span>
                 <span>Visibility</span>
@@ -933,9 +1042,8 @@ export default function FolderPage() {
                   (dragId === it.id ||
                     (isSelected && Boolean(dragId && selected.includes(dragId))))
                 const isOver = overId === it.id
-                const count = (it.count ?? 0) + (folderCounts[it.id] ?? 0)
                 const subText = it.folder
-                  ? `${count} ${count === 1 ? "item" : "items"}`
+                  ? `${it.count ?? 0} ${it.count === 1 ? "item" : "items"}`
                   : (it.flag ?? it.size ?? "")
 
                 return (
@@ -951,13 +1059,14 @@ export default function FolderPage() {
                       .join(" ")}
                     draggable
                     aria-selected={isSelected}
-                    style={{
-                      gridTemplateColumns: "2.6fr 1.2fr 1fr 0.8fr 40px",
-                    }}
+                    style={{ gridTemplateColumns: "2.6fr 1.2fr 1fr 0.8fr 40px" }}
                     onClick={(e) => handleItemClick(e, it)}
+                    onDoubleClick={() => {
+                      if (it.folder) openFolder(it.id)
+                      else router.push(`/viewer?fileId=${encodeURIComponent(it.id)}`)
+                    }}
                     onContextMenu={(e) => {
-                      if (e.shiftKey) return
-                      if (isEditableTarget(e.target)) return
+                      if (e.shiftKey || isEditableTarget(e.target)) return
                       e.preventDefault()
                       e.stopPropagation()
                       const point = computeMenuPoint(e.clientX, e.clientY)
@@ -972,7 +1081,7 @@ export default function FolderPage() {
                         e.dataTransfer.setData("text/plain", it.id)
                         e.dataTransfer.effectAllowed = "move"
                       } catch {
-                        // Ignore restricted dataTransfer environments
+                        // ignore
                       }
                       setTimeout(() => {
                         setDragId(it.id)
@@ -1012,7 +1121,7 @@ export default function FolderPage() {
                         const sourceIds = selected.includes(dragId)
                           ? selected
                           : [dragId]
-                        moveItemsTo(sourceIds, it.id)
+                        void moveItemsTo(sourceIds, it.id)
                       }
                     }}
                   >
@@ -1071,89 +1180,21 @@ export default function FolderPage() {
           >
             {visibleItems.map((it) => {
               const isSelected = selected.includes(it.id)
-              const isDragging =
-                Boolean(dragId) &&
-                (dragId === it.id ||
-                  (isSelected && Boolean(dragId && selected.includes(dragId))))
-              const isOver = overId === it.id
-              const count = (it.count ?? 0) + (folderCounts[it.id] ?? 0)
               const subText = it.folder
-                ? `${count} ${count === 1 ? "item" : "items"}`
+                ? `${it.count ?? 0} ${it.count === 1 ? "item" : "items"}`
                 : (it.flag ?? it.size ?? "")
 
               return (
                 <div
                   key={it.id}
-                  className={[
-                    "gcard item",
-                    isSelected ? "on" : "",
-                    isOver ? "over" : "",
-                    isDragging ? "drag" : "",
-                  ]
+                  className={["gcard item", isSelected ? "on" : ""]
                     .filter(Boolean)
                     .join(" ")}
-                  draggable
                   aria-selected={isSelected}
                   onClick={(e) => handleItemClick(e, it)}
-                  onContextMenu={(e) => {
-                    if (e.shiftKey) return
-                    if (isEditableTarget(e.target)) return
-                    e.preventDefault()
-                    e.stopPropagation()
-                    const point = computeMenuPoint(e.clientX, e.clientY)
-                    if (!isSelected) {
-                      setSelected([it.id])
-                      setAnchorId(it.id)
-                    }
-                    setMenu({ x: point.x, y: point.y, kind: "item" })
-                  }}
-                  onDragStart={(e) => {
-                    try {
-                      e.dataTransfer.setData("text/plain", it.id)
-                      e.dataTransfer.effectAllowed = "move"
-                    } catch {
-                      // Ignore restricted dataTransfer environments
-                    }
-                    setTimeout(() => {
-                      setDragId(it.id)
-                      setMenu(null)
-                    }, 0)
-                  }}
-                  onDragEnd={() => {
-                    setDragId(null)
-                    setOverId(null)
-                  }}
-                  onDragOver={(e) => {
-                    if (
-                      it.folder &&
-                      dragId &&
-                      dragId !== it.id &&
-                      !selected.includes(it.id)
-                    ) {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      if (overId !== it.id) setOverId(it.id)
-                    }
-                  }}
-                  onDragLeave={(e) => {
-                    if (
-                      overId === it.id &&
-                      !e.currentTarget.contains(
-                        e.relatedTarget as Node | null
-                      )
-                    ) {
-                      setOverId(null)
-                    }
-                  }}
-                  onDrop={(e) => {
-                    if (it.folder && dragId) {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      const sourceIds = selected.includes(dragId)
-                        ? selected
-                        : [dragId]
-                      moveItemsTo(sourceIds, it.id)
-                    }
+                  onDoubleClick={() => {
+                    if (it.folder) openFolder(it.id)
+                    else router.push(`/viewer?fileId=${encodeURIComponent(it.id)}`)
                   }}
                 >
                   <FileTile ext={it.ext} tone={it.tone} size={64} />
@@ -1170,11 +1211,34 @@ export default function FolderPage() {
           </div>
         ) : null}
 
-        {visibleItems.length === 0 ? (
-          <div className="glass col center muted" style={{ borderRadius: 20, padding: 40 }}>
-            {search.trim()
-              ? "No files or folders match your search."
-              : "This folder is empty. Drop files here."}
+        {!foldersQuery.isLoading && !filesQuery.isLoading && visibleItems.length === 0 ? (
+          <div
+            className="glass col center muted"
+            style={{ borderRadius: 20, padding: 40, gap: 10 }}
+          >
+            <span>
+              {search.trim()
+                ? "No files or folders match your search."
+                : "This folder is empty. Drop files here or create a folder."}
+            </span>
+            {!search.trim() ? (
+              <div className="row" style={{ gap: 8 }}>
+                <Button
+                  label="New folder"
+                  variant="secondary"
+                  size="sm"
+                  icon="plus"
+                  onClick={openNewFolderModal}
+                />
+                <Button
+                  label="Upload files"
+                  variant="primary"
+                  size="sm"
+                  icon="upload"
+                  href="/drive/upload"
+                />
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -1192,13 +1256,15 @@ export default function FolderPage() {
             }}
           >
             <span className="sm m">{selectedItems.length} selected</span>
-            <Button
-              label="Share"
-              variant="primary"
-              size="sm"
-              icon="share"
-              onClick={openShareModal}
-            />
+            {singleFile ? (
+              <Button
+                label="Share"
+                variant="primary"
+                size="sm"
+                icon="share"
+                onClick={openShareModal}
+              />
+            ) : null}
             <Button
               label="Move to"
               variant="secondary"
@@ -1206,19 +1272,22 @@ export default function FolderPage() {
               icon="folder"
               onClick={openMoveModal}
             />
+            {singleFile ? (
+              <Button
+                label="Download"
+                variant="secondary"
+                size="sm"
+                icon="download"
+                onClick={() => void handleDownloadSelected(singleFile.id)}
+              />
+            ) : null}
             <Button
-              label="Download"
-              variant="secondary"
-              size="sm"
-              icon="download"
-              onClick={() => say("Download started")}
-            />
-            <Button
-              label="Move to trash"
+              label={busy ? "Working…" : "Trash / Delete"}
               variant="danger"
               size="sm"
               icon="trash"
-              onClick={() => trashItems()}
+              disabled={busy}
+              onClick={() => void trashItems()}
             />
           </div>
         ) : null}
@@ -1284,7 +1353,7 @@ export default function FolderPage() {
             aria-modal="true"
             aria-labelledby="new-folder-title"
             onClick={(e) => e.stopPropagation()}
-            onSubmit={handleCreateFolder}
+            onSubmit={(e) => void handleCreateFolder(e)}
             style={{
               width: 420,
               maxWidth: "100%",
@@ -1299,7 +1368,7 @@ export default function FolderPage() {
                 <h2 id="new-folder-title" className="h2">
                   New folder
                 </h2>
-                <span className="sm muted">Inside Projects / Thesis</span>
+                <span className="sm muted">Inside {currentFolderName}</span>
               </div>
               <Button
                 label="Close"
@@ -1317,7 +1386,7 @@ export default function FolderPage() {
               placeholder="Untitled folder"
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
-              note="Inherits Private visibility and folder AI consent."
+              note="Created with AI consent Off by default."
             />
 
             <div className="row between">
@@ -1333,10 +1402,11 @@ export default function FolderPage() {
                 />
                 <Button
                   type="submit"
-                  label="Create folder"
+                  label={busy ? "Creating…" : "Create folder"}
                   variant="primary"
                   size="md"
                   icon="plus"
+                  disabled={busy}
                 />
               </div>
             </div>
@@ -1369,9 +1439,7 @@ export default function FolderPage() {
                 <h2 id="move-dialog-title" className="h2 ell">
                   Move {shareTitleName}
                 </h2>
-                <span className="sm muted">
-                  Choose a destination folder in Thesis
-                </span>
+                <span className="sm muted">Choose a destination folder</span>
               </div>
               <Button
                 label="Close"
@@ -1383,44 +1451,57 @@ export default function FolderPage() {
               />
             </div>
 
-            {moveTargetFolders.length > 0 ? (
-              <div className="col" style={{ gap: 6 }}>
-                {moveTargetFolders.map((folder) => {
-                  const count =
-                    (folder.count ?? 0) + (folderCounts[folder.id] ?? 0)
-                  return (
-                    <button
-                      key={folder.id}
-                      type="button"
-                      className="glass-soft row between"
-                      style={{
-                        width: "100%",
-                        padding: "12px 14px",
-                        borderRadius: 14,
-                        cursor: "pointer",
-                        textAlign: "left",
-                      }}
-                      onClick={() => moveItemsTo(selected, folder.id)}
-                    >
-                      <span className="row" style={{ gap: 10 }}>
-                        <Icon glyph="folder" size={16} />
-                        <span className="sm m">{folder.name}</span>
-                      </span>
-                      <span className="xs muted">
-                        {count} {count === 1 ? "item" : "items"}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-            ) : (
-              <div
-                className="glass-soft sm muted"
-                style={{ borderRadius: 14, padding: "14px 16px" }}
-              >
-                No other folders available here. Create a new folder first.
-              </div>
-            )}
+            <div className="col" style={{ gap: 6 }}>
+              {currentFolderId !== null ? (
+                <button
+                  type="button"
+                  className="glass-soft row between"
+                  style={{
+                    width: "100%",
+                    padding: "12px 14px",
+                    borderRadius: 14,
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                  onClick={() => void moveItemsTo(selected, null)}
+                >
+                  <span className="row" style={{ gap: 10 }}>
+                    <Icon glyph="drive" size={16} />
+                    <span className="sm m">Drive root</span>
+                  </span>
+                </button>
+              ) : null}
+
+              {moveTargetFolders.map((folder) => (
+                <button
+                  key={folder.id}
+                  type="button"
+                  className="glass-soft row between"
+                  style={{
+                    width: "100%",
+                    padding: "12px 14px",
+                    borderRadius: 14,
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                  onClick={() => void moveItemsTo(selected, folder.id)}
+                >
+                  <span className="row" style={{ gap: 10 }}>
+                    <Icon glyph="folder" size={16} />
+                    <span className="sm m">{folder.name}</span>
+                  </span>
+                </button>
+              ))}
+
+              {currentFolderId === null && moveTargetFolders.length === 0 ? (
+                <div
+                  className="glass-soft sm muted"
+                  style={{ borderRadius: 14, padding: "14px 16px" }}
+                >
+                  Create another folder first to move items into it.
+                </div>
+              ) : null}
+            </div>
 
             <div className="row between">
               <Button
@@ -1444,7 +1525,7 @@ export default function FolderPage() {
         </div>
       ) : null}
 
-      {shareOpen && selectedItems.length > 0 ? (
+      {shareOpen && singleFile ? (
         <div className="scrim" onClick={closeAllOverlays}>
           <div
             ref={shareDialogRef}
@@ -1467,7 +1548,7 @@ export default function FolderPage() {
             <div className="row between">
               <div className="col" style={{ gap: 2, minWidth: 0 }}>
                 <h2 id="share-dialog-title" className="h2 ell">
-                  Share {shareTitleName}
+                  Share {singleFile.name}
                 </h2>
                 <span className="sm muted">Checked before the link exists</span>
               </div>
@@ -1493,8 +1574,8 @@ export default function FolderPage() {
                   <Icon glyph="warn" size={16} />
                 </span>
                 <span className="sm">
-                  <span className="b">Email addresses found.</span> A redacted
-                  copy will be shared.
+                  <span className="b">Sensitive findings detected.</span> A
+                  redacted copy will be shared.
                 </span>
               </div>
             ) : null}
@@ -1518,7 +1599,7 @@ export default function FolderPage() {
 
             <div className="row between">
               <Link
-                href={resolveBoardHref("Share.dc.html")}
+                href={`/sharing/share?fileId=${encodeURIComponent(singleFile.id)}`}
                 className="sm muted"
               >
                 More options
@@ -1531,18 +1612,12 @@ export default function FolderPage() {
                   onClick={closeAllOverlays}
                 />
                 <Button
-                  label="Create link"
+                  label={busy ? "Creating…" : "Create link"}
                   variant="primary"
                   size="md"
                   icon="link"
-                  onClick={() => {
-                    setShareOpen(false)
-                    const expiryMsg =
-                      shareExpiry === "Never"
-                        ? "Link created. Does not expire."
-                        : `Link created. Ends in ${shareExpiry}.`
-                    say(expiryMsg, () => setToast(null))
-                  }}
+                  disabled={busy}
+                  onClick={() => void handleQuickShare()}
                 />
               </div>
             </div>
@@ -1622,7 +1697,6 @@ export default function FolderPage() {
             alignItems: "center",
             justifyContent: "center",
             gap: 10,
-            animation: "gl-fade 160ms ease-out backwards",
           }}
         >
           <div
@@ -1631,26 +1705,16 @@ export default function FolderPage() {
           >
             <Icon glyph="upload" size={24} />
           </div>
-          <span className="h2">Drop to upload to Thesis</span>
+          <span className="h2">Drop to upload to {currentFolderName}</span>
           <span className="sm muted">
             Files go to quarantine and are scanned first.
           </span>
         </div>
       ) : null}
 
-      {toast ? (
+      {toastMsg ? (
         <div role="status" aria-live="polite" className="toast">
-          <span>{toast.msg}</span>
-          {toast.undo ? (
-            <Button
-              label="Undo"
-              variant="secondary"
-              size="sm"
-              onClick={toast.undo}
-            />
-          ) : (
-            <span style={{ width: 8 }} />
-          )}
+          <span>{toastMsg}</span>
         </div>
       ) : null}
     </div>

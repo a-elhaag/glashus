@@ -1,150 +1,33 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
 import {
   Button,
   Chip,
-  FileTile,
   Icon,
   PageHead,
   Seg,
-  Sidebar,
-  resolveBoardHref,
 } from "@workspace/ui/components/glashus"
-
-type PurposeFilter =
-  | "All"
-  | "Chat"
-  | "Ask files"
-  | "Naming"
-  | "Version diff"
-  | "Embedding"
-  | "Cleanup"
-
-type MaskFilter = "All reads" | "Masked only"
-
-interface AiLogEntry {
-  id: string
-  time: string
-  ext: string
-  fileName: string
-  purpose: Exclude<PurposeFilter, "All">
-  whatSent: string
-  model: string
-  masked: boolean
-  folder: string
-  consentMode: string
-  detailNote: string
-}
-
-const AI_LOG_ENTRIES: AiLogEntry[] = [
-  {
-    id: "log-1",
-    time: "12:41",
-    ext: "PDF",
-    fileName: "tax-return-2025.pdf",
-    purpose: "Chat",
-    whatSent: "Text with 2 values masked",
-    model: "Gemini",
-    masked: true,
-    folder: "/Finance",
-    consentMode: "Ask each time (approved)",
-    detailNote:
-      "Replaced ID and IBAN with temporary tokens before sending to Vertex AI. Prompt injection check passed.",
-  },
-  {
-    id: "log-2",
-    time: "11:02",
-    ext: "PDF",
-    fileName: "lease-agreement.pdf",
-    purpose: "Ask files",
-    whatSent: "3 passages, no masking needed",
-    model: "Gemini",
-    masked: false,
-    folder: "/Personal",
-    consentMode: "Ask each time (approved)",
-    detailNote:
-      "Sent pages 4 and 7 excerpts for end-date and notice-period citations.",
-  },
-  {
-    id: "log-3",
-    time: "10:15",
-    ext: "JPG",
-    fileName: "IMG_4032.jpg",
-    purpose: "Naming",
-    whatSent: "Image only, EXIF removed",
-    model: "Gemini",
-    masked: true,
-    folder: "/Photos",
-    consentMode: "Allowed",
-    detailNote:
-      "GPS coordinates, camera serial and timestamp were stripped before generating filename suggestion.",
-  },
-  {
-    id: "log-4",
-    time: "Nov 13",
-    ext: "DOC",
-    fileName: "thesis-draft-v4.docx",
-    purpose: "Version diff",
-    whatSent: "v2 and v3 text",
-    model: "Gemini",
-    masked: false,
-    folder: "/Thesis",
-    consentMode: "Allowed",
-    detailNote:
-      "Compared section structure between version 2 and version 3; zero PII patterns detected.",
-  },
-  {
-    id: "log-5",
-    time: "Nov 13",
-    ext: "PDF",
-    fileName: "q3-pitch-deck.pdf",
-    purpose: "Embedding",
-    whatSent: "768-number summary, no text",
-    model: "Gemini",
-    masked: false,
-    folder: "/Work",
-    consentMode: "Allowed",
-    detailNote:
-      "Generated 768-dimension vector index for Ask my files; raw slides are never stored with the vector.",
-  },
-  {
-    id: "log-6",
-    time: "Nov 12",
-    ext: "CSV",
-    fileName: "survey-data.csv",
-    purpose: "Cleanup",
-    whatSent: "Column names only",
-    model: "Gemini",
-    masked: true,
-    folder: "/Thesis",
-    consentMode: "Allowed",
-    detailNote:
-      "Respondent email and phone rows stayed local; only schema header strings were inspected.",
-  },
-]
-
-const PURPOSE_OPTIONS: PurposeFilter[] = [
-  "All",
-  "Chat",
-  "Ask files",
-  "Naming",
-  "Version diff",
-  "Embedding",
-  "Cleanup",
-]
+import { AppSidebar } from "@/components/app-sidebar"
+import { glashusApi } from "@/lib/api"
+import { formatTimeOrDate } from "@/lib/format"
+import {
+  unwrapApi,
+  useAiLog,
+  useInvalidateDrive,
+  useMe,
+} from "@/lib/queries"
 
 export default function AiLogPage() {
-  const [paused, setPaused] = React.useState(false)
-  const [purposeFilter, setPurposeFilter] = React.useState<PurposeFilter>("All")
-  const [maskFilter, setMaskFilter] = React.useState<MaskFilter>("All reads")
-  const [searchQuery, setSearchQuery] = React.useState("")
-  const [selectedId, setSelectedId] = React.useState<string | null>(null)
-  const [toast, setToast] = React.useState<{
-    message: string
-    undo?: () => void
-  } | null>(null)
+  const { data: logData, isLoading, error } = useAiLog()
+  const { data: me } = useMe()
+  const invalidate = useInvalidateDrive()
+
+  const [filter, setFilter] = React.useState<"All" | "Masked only">("All")
+  const [search, setSearch] = React.useState("")
+  const [expandedId, setExpandedId] = React.useState<string | null>(null)
+  const [toggling, setToggling] = React.useState(false)
+  const [toast, setToast] = React.useState<string | null>(null)
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   React.useEffect(() => {
@@ -153,271 +36,267 @@ export default function AiLogPage() {
     }
   }, [])
 
-  function showToast(message: string, undo?: () => void) {
+  const notify = React.useCallback((msg: string) => {
     if (timerRef.current) clearTimeout(timerRef.current)
-    setToast({ message, undo })
-    timerRef.current = setTimeout(() => setToast(null), 5000)
+    setToast(msg)
+    timerRef.current = setTimeout(() => setToast(null), 3200)
+  }, [])
+
+  const aiMode = me?.user.aiMode ?? "ask"
+  const isPaused = aiMode === "off"
+
+  const toggleAiMode = async () => {
+    setToggling(true)
+    const nextMode = isPaused ? "ask" : "off"
+    try {
+      unwrapApi(
+        await glashusApi.PATCH("/v1/me", {
+          body: { aiMode: nextMode },
+        })
+      )
+      invalidate()
+      notify(
+        nextMode === "off"
+          ? "Paused all AI reads across your Drive"
+          : "Resumed AI reads (Ask mode)"
+      )
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed to update AI mode.")
+    } finally {
+      setToggling(false)
+    }
   }
 
-  function handleTogglePause() {
-    const prev = paused
-    const next = !prev
-    setPaused(next)
-    showToast(
-      next ? "All AI access paused across folders" : "AI access resumed",
-      () => {
-        setPaused(prev)
-        setToast(null)
+  const reads = React.useMemo(() => logData?.reads ?? [], [logData])
+
+  const filtered = React.useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return reads.filter((r) => {
+      if (filter === "Masked only" && r.maskedCount === 0) return false
+      if (q) {
+        const hay =
+          `${r.fileName} ${r.folderName} ${r.purpose} ${r.model} ${r.sentSummary}`.toLowerCase()
+        if (!hay.includes(q)) return false
       }
-    )
-  }
-
-  const normalizedQuery = searchQuery.trim().toLowerCase()
-  const filteredEntries = AI_LOG_ENTRIES.filter((entry) => {
-    if (purposeFilter !== "All" && entry.purpose !== purposeFilter) {
-      return false
-    }
-    if (maskFilter === "Masked only" && !entry.masked) {
-      return false
-    }
-    if (normalizedQuery) {
-      const hay =
-        `${entry.fileName} ${entry.purpose} ${entry.whatSent} ${entry.folder}`.toLowerCase()
-      if (!hay.includes(normalizedQuery)) return false
-    }
-    return true
-  })
+      return true
+    })
+  }, [filter, reads, search])
 
   return (
-    <div className="app" style={{ minHeight: 900, position: "relative" }}>
-      <Sidebar active="ailog" />
+    <div className="app" style={{ minHeight: 900 }}>
+      <AppSidebar active="ailog" />
       <main className="main">
         <PageHead
           title="AI access log"
-          sub="Every time Gemini touched a file, and what it saw"
-          cta="none"
-          ctaIcon="upload"
-          searchValue={searchQuery}
-          onSearchChange={setSearchQuery}
+          sub="Every file chunk Gemini inspected, folder consent state, and count of sensitive tokens masked beforehand."
+          cta="Ask my files"
+          ctaIcon="sparkle"
+          ctaHref="/ai/ask"
+          searchValue={search}
+          onSearchChange={setSearch}
         />
 
-        <div className="glass card row wrap" style={{ gap: 16 }}>
-          <div className="tile">
-            <Icon glyph={paused ? "pause" : "sparkle"} size={18} />
-          </div>
-          <div className="grow col" style={{ gap: 2, minWidth: 220 }}>
-            <span className="m">
-              {paused
-                ? "AI access: Paused for all folders"
-                : "AI access: Ask each time"}
-            </span>
-            <span className="sm muted">
-              {paused
-                ? "No new Gemini reads can run until you resume."
-                : "Change it per folder in Settings."}
-            </span>
+        <div
+          className="glass card row wrap between"
+          style={{ padding: "14px 18px", gap: 12 }}
+        >
+          <div className="row" style={{ gap: 12 }}>
+            <div className={isPaused ? "tile" : "tile n"}>
+              <Icon glyph={isPaused ? "pause" : "sparkle"} size={18} />
+            </div>
+            <div className="col" style={{ gap: 2 }}>
+              <span className="m">
+                {isPaused
+                  ? "AI reads are paused globally"
+                  : `AI consent mode: ${aiMode.toUpperCase()}`}
+              </span>
+              <span className="xs muted">
+                Every AI read checks folder consent first and persists a masked
+                audit record here.
+              </span>
+            </div>
           </div>
           <Button
-            label={paused ? "Resume AI" : "Pause all AI"}
-            variant={paused ? "primary" : "danger"}
-            size="md"
-            icon={paused ? "play" : "pause"}
-            onClick={handleTogglePause}
-          />
-          <Button
-            label="Settings"
-            variant="secondary"
-            size="md"
-            icon="sliders"
-            href="Settings.dc.html"
+            label={
+              toggling
+                ? "Updating…"
+                : isPaused
+                  ? "Resume AI access"
+                  : "Pause all AI"
+            }
+            variant={isPaused ? "primary" : "danger"}
+            size="sm"
+            icon={isPaused ? "play" : "pause"}
+            disabled={toggling}
+            onClick={() => void toggleAiMode()}
           />
         </div>
 
-        <div
+        <section
+          aria-label="AI access summary"
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: 16,
+            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+            gap: 12,
           }}
         >
-          <div
-            className="glass card col"
-            style={{ gap: 4, padding: "18px 20px" }}
-          >
-            <span
-              style={{
-                fontSize: 28,
-                fontWeight: 600,
-                letterSpacing: "-0.03em",
-              }}
-            >
-              14
+          <div className="glass card col" style={{ padding: 18, gap: 4 }}>
+            <span className="xs muted">WEEKLY AI READS</span>
+            <span style={{ fontSize: 32, fontWeight: 600 }}>
+              {logData?.weeklyReads ?? 0}
             </span>
-            <span className="sm muted">AI reads this week</span>
+            <span className="xs muted">Logged in last 7 days</span>
           </div>
-          <div
-            className="glass card col"
-            style={{ gap: 4, padding: "18px 20px" }}
-          >
-            <span
-              style={{
-                fontSize: 28,
-                fontWeight: 600,
-                letterSpacing: "-0.03em",
-              }}
-            >
-              9
+          <div className="glass card col" style={{ padding: 18, gap: 4 }}>
+            <span className="xs muted">SENSITIVE VALUES MASKED</span>
+            <span style={{ fontSize: 32, fontWeight: 600 }}>
+              {logData?.totalMasked ?? 0}
             </span>
-            <span className="sm muted">Values masked before sending</span>
+            <span className="xs muted">Never sent unmasked to Gemini</span>
           </div>
-          <div
-            className="glass card col"
-            style={{ gap: 4, padding: "18px 20px" }}
-          >
-            <span
-              style={{
-                fontSize: 28,
-                fontWeight: 600,
-                letterSpacing: "-0.03em",
-                color: "var(--accent)",
-              }}
-            >
-              0
+          <div className="glass card col" style={{ padding: 18, gap: 4 }}>
+            <span className="xs muted">MONTHLY USAGE</span>
+            <span style={{ fontSize: 32, fontWeight: 600 }}>
+              {me?.usage.aiReads ?? 0}
             </span>
-            <span className="sm muted">Reads without consent</span>
+            <span className="xs muted">Total requests this month</span>
           </div>
-        </div>
+        </section>
 
-        <div className="row wrap between" style={{ gap: 12 }}>
-          <Seg
-            options={PURPOSE_OPTIONS}
-            value={purposeFilter}
-            onChange={(val) => setPurposeFilter(val as PurposeFilter)}
-            aria-label="Filter by AI purpose"
-          />
-          <Seg
-            options={["All reads", "Masked only"]}
-            value={maskFilter}
-            onChange={(val) => setMaskFilter(val as MaskFilter)}
-            aria-label="Filter by masking"
-          />
-        </div>
+        <section className="col" style={{ gap: 12 }}>
+          <div className="row wrap between">
+            <Seg
+              options="All|Masked only"
+              value={filter}
+              onChange={(val) => {
+                if (val === "All" || val === "Masked only") setFilter(val)
+              }}
+              aria-label="Filter AI reads"
+            />
+            <span className="xs muted">{filtered.length} logged reads</span>
+          </div>
 
-        <div
-          className="glass"
-          style={{ overflowX: "auto", borderRadius: 20 }}
-        >
-          <div style={{ minWidth: 760 }}>
-            <div
-              className="thead"
-              style={{ gridTemplateColumns: "0.8fr 2fr 1fr 1.6fr 0.8fr" }}
-            >
-              <span>Time</span>
-              <span>File</span>
-              <span>Purpose</span>
-              <span>What was sent</span>
-              <span>Model</span>
-            </div>
-
-            {filteredEntries.length === 0 ? (
+          <div
+            className="glass"
+            style={{ overflowX: "auto", borderRadius: 20 }}
+          >
+            <div style={{ minWidth: 740 }}>
               <div
-                className="col center"
-                style={{ padding: "36px 20px", gap: 10 }}
+                className="thead"
+                style={{
+                  gridTemplateColumns:
+                    "minmax(0,2fr) 1fr 1.1fr 0.9fr 110px 44px",
+                }}
               >
-                <span className="m">No AI reads match this filter</span>
-                <Button
-                  label="Reset filters"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    setPurposeFilter("All")
-                    setMaskFilter("All reads")
-                    setSearchQuery("")
-                  }}
-                />
+                <span>File</span>
+                <span>Folder</span>
+                <span>Purpose · Model</span>
+                <span>Masked</span>
+                <span>When</span>
+                <span />
               </div>
-            ) : (
-              filteredEntries.map((entry) => {
-                const isSelected = selectedId === entry.id
-                return (
-                  <React.Fragment key={entry.id}>
-                    <div
-                      className={`trow${isSelected ? " sel" : ""}`}
-                      style={{
-                        gridTemplateColumns: "0.8fr 2fr 1fr 1.6fr 0.8fr",
-                        cursor: "pointer",
-                      }}
-                      onClick={() =>
-                        setSelectedId(isSelected ? null : entry.id)
-                      }
-                    >
-                      <span className="sm muted">{entry.time}</span>
-                      <div className="row" style={{ minWidth: 0 }}>
-                        <FileTile ext={entry.ext} tone={0} size={36} />
-                        <div
-                          className="col"
-                          style={{ gap: 1, minWidth: 0 }}
-                        >
-                          <Link
-                            href={resolveBoardHref("Viewer.dc.html")}
-                            className="ell m"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {entry.fileName}
-                          </Link>
-                        </div>
-                      </div>
-                      <div>
-                        <Chip label={entry.purpose} tone="neutral" />
-                      </div>
-                      <span className="sm muted">{entry.whatSent}</span>
-                      <span className="sm muted">{entry.model}</span>
-                    </div>
-                    {isSelected ? (
+
+              {isLoading ? (
+                <div className="col center muted" style={{ padding: "36px 20px" }}>
+                  <span className="sm">Loading AI access log…</span>
+                </div>
+              ) : error ? (
+                <div
+                  className="col center"
+                  style={{ padding: "36px 20px", color: "var(--accent)" }}
+                >
+                  <span className="sm">
+                    {error instanceof Error
+                      ? error.message
+                      : "Failed to load AI access log."}
+                  </span>
+                </div>
+              ) : filtered.length === 0 ? (
+                <div
+                  className="col center"
+                  style={{ padding: "40px 20px", gap: 6 }}
+                >
+                  <span className="h2">No AI reads recorded yet</span>
+                  <span className="sm muted">
+                    Every prompt in Ask my files writes a transparent log entry
+                    here.
+                  </span>
+                </div>
+              ) : (
+                filtered.map((r) => {
+                  const isOpen = expandedId === r.id
+                  return (
+                    <React.Fragment key={r.id}>
                       <div
-                        className="glass-soft row wrap between"
+                        className="trow"
                         style={{
-                          padding: "12px 20px",
-                          gap: 12,
-                          borderBottom: "1px solid rgba(17,17,17,0.06)",
+                          gridTemplateColumns:
+                            "minmax(0,2fr) 1fr 1.1fr 0.9fr 110px 44px",
                         }}
                       >
-                        <div className="col" style={{ gap: 2, minWidth: 260 }}>
-                          <span className="xs b">
-                            {entry.folder} · {entry.consentMode}
+                        <div className="col" style={{ minWidth: 0, gap: 2 }}>
+                          <span className="sm m ell">{r.fileName}</span>
+                          <span className="xs muted">
+                            Consent: {r.consentMode}
                           </span>
-                          <span className="xs muted">{entry.detailNote}</span>
                         </div>
+                        <span className="sm muted ell">{r.folderName}</span>
+                        <div className="col" style={{ gap: 2 }}>
+                          <span className="sm">{r.purpose}</span>
+                          <span className="xs muted">{r.model}</span>
+                        </div>
+                        <div>
+                          <Chip
+                            label={`${r.maskedCount} masked`}
+                            tone={r.maskedCount > 0 ? "accent" : "clear"}
+                          />
+                        </div>
+                        <span className="xs muted">
+                          {formatTimeOrDate(r.time)}
+                        </span>
                         <Button
-                          label="Open file"
-                          variant="ghost"
+                          label={isOpen ? "Collapse" : "Expand"}
+                          icon={isOpen ? "chevD" : "chevR"}
+                          iconOnly
                           size="sm"
-                          icon="eye"
-                          href="Viewer.dc.html"
+                          variant="ghost"
+                          onClick={() =>
+                            setExpandedId((prev) =>
+                              prev === r.id ? null : r.id
+                            )
+                          }
                         />
                       </div>
-                    ) : null}
-                  </React.Fragment>
-                )
-              })
-            )}
+                      {isOpen ? (
+                        <div
+                          className="glass-soft col"
+                          style={{
+                            margin: "0 12px 10px",
+                            padding: 12,
+                            borderRadius: 12,
+                            gap: 4,
+                          }}
+                        >
+                          <span className="xs muted">
+                            EXCERPT SUMMARY SENT TO GEMINI
+                          </span>
+                          <span className="sm">{r.sentSummary}</span>
+                        </div>
+                      ) : null}
+                    </React.Fragment>
+                  )
+                })
+              )}
+            </div>
           </div>
-        </div>
-      </main>
+        </section>
 
-      {toast ? (
-        <div role="status" className="toast" style={{ position: "fixed" }}>
-          <span>{toast.message}</span>
-          {toast.undo ? (
-            <Button
-              label="Undo"
-              variant="secondary"
-              size="sm"
-              onClick={toast.undo}
-            />
-          ) : null}
-        </div>
-      ) : null}
+        {toast ? (
+          <div className="toast">
+            <Icon glyph="check" size={14} /> {toast}
+          </div>
+        ) : null}
+      </main>
     </div>
   )
 }

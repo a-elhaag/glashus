@@ -1,15 +1,26 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 import {
   Button,
   Field,
   Icon,
   PageHead,
   Seg,
-  Sidebar,
   Switch,
 } from "@workspace/ui/components/glashus"
+import { AppSidebar } from "@/components/app-sidebar"
+import { useAuth } from "@/components/providers"
+import { glashusApi } from "@/lib/api"
+import { formatBytes } from "@/lib/format"
+import type { components } from "@workspace/sdk"
+import {
+  unwrapApi,
+  useFolders,
+  useInvalidateDrive,
+  useMe,
+} from "@/lib/queries"
 
 type ConsentLevel = "Off" | "Ask" | "Allow"
 type SettingsSectionId =
@@ -18,17 +29,6 @@ type SettingsSectionId =
   | "notifications"
   | "security"
   | "data"
-
-type FolderConsentItem = {
-  id: string
-  name: string
-  value: ConsentLevel
-}
-
-type ToastState = {
-  msg: string
-  undo?: () => void
-} | null
 
 const NAV_ITEMS: Array<{
   id: SettingsSectionId
@@ -42,43 +42,54 @@ const NAV_ITEMS: Array<{
   { id: "data", label: "Data and export", icon: "download" },
 ]
 
-const INITIAL_FOLDERS: FolderConsentItem[] = [
-  { id: "personal", name: "Personal", value: "Off" },
-  { id: "finance", name: "Finance", value: "Ask" },
-  { id: "thesis", name: "Thesis", value: "Allow" },
-  { id: "shared", name: "Shared", value: "Ask" },
-]
+function consentToUi(consent: "off" | "ask" | "allow"): ConsentLevel {
+  if (consent === "allow") return "Allow"
+  if (consent === "ask") return "Ask"
+  return "Off"
+}
+
+function uiToConsent(val: string): "off" | "ask" | "allow" | null {
+  if (val === "Off") return "off"
+  if (val === "Ask") return "ask"
+  if (val === "Allow") return "allow"
+  return null
+}
 
 export default function SettingsPage() {
-  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const router = useRouter()
+  const { signOutUser } = useAuth()
+  const meQuery = useMe()
+  const foldersQuery = useFolders()
+  const invalidateDrive = useInvalidateDrive()
 
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const [activeNav, setActiveNav] =
     React.useState<SettingsSectionId>("ai-consent")
   const [search, setSearch] = React.useState("")
 
-  // AI consent per folder
-  const [folders, setFolders] =
-    React.useState<FolderConsentItem[]>(INITIAL_FOLDERS)
-
-  // Notification switches
+  const [displayName, setDisplayName] = React.useState("")
+  const [alertEmail, setAlertEmail] = React.useState("")
   const [massAlerts, setMassAlerts] = React.useState(true)
   const [canaryAlerts, setCanaryAlerts] = React.useState(true)
   const [weeklySummary, setWeeklySummary] = React.useState(false)
-
-  // Account fields
-  const [displayName, setDisplayName] = React.useState("Anas Abuelhaag")
-  const [alertEmail, setAlertEmail] = React.useState("anas@glashus.dev")
-
-  // Security controls
   const [requirePinOnPublic, setRequirePinOnPublic] = React.useState(true)
   const [defaultExpiryDays, setDefaultExpiryDays] = React.useState("7")
-  const [vaultHint, setVaultHint] = React.useState("First lab notebook")
+  const [vaultHint, setVaultHint] = React.useState("")
+  const [saving, setSaving] = React.useState(false)
+  const [toastMsg, setToastMsg] = React.useState<string | null>(null)
 
-  // Delete account modal
-  const [deleteOpen, setDeleteOpen] = React.useState(false)
-  const [deleteConfirmText, setDeleteConfirmText] = React.useState("")
-
-  const [toast, setToast] = React.useState<ToastState>(null)
+  React.useEffect(() => {
+    if (!meQuery.data) return
+    const u = meQuery.data.user
+    setDisplayName(u.name)
+    setAlertEmail(u.alertEmail || u.email)
+    setMassAlerts(u.massAlerts)
+    setCanaryAlerts(u.canaryAlerts)
+    setWeeklySummary(u.weeklySummary)
+    setRequirePinOnPublic(u.requirePinOnPublic)
+    setDefaultExpiryDays(String(u.defaultExpiryDays))
+    setVaultHint(u.vaultHint)
+  }, [meQuery.data])
 
   React.useEffect(() => {
     return () => {
@@ -86,82 +97,72 @@ export default function SettingsPage() {
     }
   }, [])
 
-  React.useEffect(() => {
-    if (!deleteOpen) return
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setDeleteOpen(false)
-        setDeleteConfirmText("")
-      }
-    }
-    window.addEventListener("keydown", onKeyDown)
-    return () => window.removeEventListener("keydown", onKeyDown)
-  }, [deleteOpen])
-
-  const showToast = React.useCallback((msg: string, undo?: () => void) => {
+  const showToast = React.useCallback((msg: string) => {
     if (timerRef.current) clearTimeout(timerRef.current)
-    setToast({ msg, undo })
-    timerRef.current = setTimeout(() => {
-      setToast(null)
-    }, 5000)
+    setToastMsg(msg)
+    timerRef.current = setTimeout(() => setToastMsg(null), 4000)
   }, [])
 
-  const updateFolderConsent = React.useCallback(
-    (folderId: string, nextVal: string) => {
-      if (nextVal !== "Off" && nextVal !== "Ask" && nextVal !== "Allow") return
-      const prev = folders
-      const target = prev.find((f) => f.id === folderId)
-      if (!target || target.value === nextVal) return
-      setFolders(
-        prev.map((f) => (f.id === folderId ? { ...f, value: nextVal } : f))
+  const patchSettings = async (
+    body: components["schemas"]["UpdateMeRequest"],
+    successMsg: string
+  ) => {
+    setSaving(true)
+    try {
+      unwrapApi(
+        await glashusApi.PATCH("/v1/me", {
+          body,
+        })
       )
-      showToast(`AI consent for ${target.name} set to ${nextVal}`, () => {
-        setFolders(prev)
-        setToast(null)
+      invalidateDrive()
+      showToast(successMsg)
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to save settings")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const updateFolderConsent = async (
+    folderId: string,
+    folderName: string,
+    nextVal: string
+  ) => {
+    const mapped = uiToConsent(nextVal)
+    if (!mapped) return
+    try {
+      unwrapApi(
+        await glashusApi.PATCH("/v1/folders/{id}", {
+          params: { path: { id: folderId } },
+          body: { aiConsent: mapped },
+        })
+      )
+      invalidateDrive()
+      showToast(`AI consent for ${folderName} set to ${nextVal}`)
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : "Failed to update folder consent"
+      )
+    }
+  }
+
+  const handleExportAll = async () => {
+    try {
+      const data = unwrapApi(await glashusApi.GET("/v1/export"))
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json",
       })
-    },
-    [folders, showToast]
-  )
-
-  const toggleSwitch = React.useCallback(
-    (
-      label: string,
-      current: boolean,
-      setter: React.Dispatch<React.SetStateAction<boolean>>,
-      next: boolean
-    ) => {
-      setter(next)
-      showToast(`${label} turned ${next ? "on" : "off"}`, () => {
-        setter(current)
-        setToast(null)
-      })
-    },
-    [showToast]
-  )
-
-  const handleSaveAccount = React.useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault()
-      const cleanName = displayName.trim() || "Anas Abuelhaag"
-      const cleanEmail = alertEmail.trim() || "anas@glashus.dev"
-      setDisplayName(cleanName)
-      setAlertEmail(cleanEmail)
-      showToast("Account details saved")
-    },
-    [displayName, alertEmail, showToast]
-  )
-
-  const handleSaveSecurity = React.useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault()
-      const parsed = Number.parseInt(defaultExpiryDays, 10)
-      const safeDays =
-        Number.isFinite(parsed) && parsed > 0 ? String(parsed) : "7"
-      setDefaultExpiryDays(safeDays)
-      showToast(`Default link expiry set to ${safeDays} days`)
-    },
-    [defaultExpiryDays, showToast]
-  )
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement("a")
+      anchor.href = url
+      anchor.download = `glashus-export-${new Date().toISOString().slice(0, 10)}.json`
+      anchor.click()
+      URL.revokeObjectURL(url)
+      showToast("Export downloaded")
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Export failed")
+    }
+  }
 
   const query = search.trim().toLowerCase()
   const matchesSection = React.useCallback(
@@ -169,21 +170,34 @@ export default function SettingsPage() {
     [query]
   )
 
+  const folders = foldersQuery.data ?? []
+  const user = meQuery.data?.user
+  const usage = meQuery.data?.usage
+  const storagePct =
+    user && user.storageQuotaBytes > 0
+      ? Math.min(100, Math.round((user.bytesUsed / user.storageQuotaBytes) * 100))
+      : 0
+  const downloadPct =
+    usage && usage.downloadCapBytes > 0
+      ? Math.min(
+          100,
+          Math.round((usage.downloadBytes / usage.downloadCapBytes) * 100)
+        )
+      : 0
+
   const showAiConsent = matchesSection(
-    "ai consent gemini folder masking personal finance thesis shared off ask allow"
+    "ai consent gemini folder masking off ask allow"
   )
   const showNotifications = matchesSection(
-    "notifications alerts mass-change canary triggers weekly exposure summary email push"
+    "notifications alerts mass-change canary triggers weekly exposure summary"
   )
   const showAccount = matchesSection(
-    "account profile display name alert email"
+    "account profile display name alert email storage downloads quota"
   )
   const showSecurity = matchesSection(
     "security pin public links default link expiry vault passphrase hint"
   )
-  const showData = matchesSection(
-    "your data export all data zip delete account"
-  )
+  const showData = matchesSection("your data export json sign out")
 
   const anySectionVisible =
     showAiConsent ||
@@ -194,11 +208,11 @@ export default function SettingsPage() {
 
   return (
     <div className="app" style={{ minHeight: 900 }}>
-      <Sidebar active="settings" />
+      <AppSidebar active="settings" />
       <main className="main">
         <PageHead
           title="Settings"
-          sub="Account, AI consent, alerts and your data"
+          sub="Account, AI consent, quotas and your data"
           cta="none"
           ctaIcon="upload"
           searchValue={search}
@@ -241,27 +255,53 @@ export default function SettingsPage() {
                 className="glass card col"
                 style={{ gap: 6 }}
               >
-                <h2 className="h2">AI consent</h2>
+                <div className="row between wrap" style={{ gap: 8 }}>
+                  <h2 className="h2">AI consent</h2>
+                  {user ? (
+                    <Seg
+                      options="Off|Ask|Allow"
+                      value={consentToUi(user.aiMode)}
+                      onChange={(val) => {
+                        const mode = uiToConsent(val)
+                        if (mode) {
+                          void patchSettings(
+                            { aiMode: mode } as never,
+                            `Default AI mode set to ${val}`
+                          )
+                        }
+                      }}
+                      aria-label="Global AI mode"
+                    />
+                  ) : null}
+                </div>
                 <p className="p muted" style={{ margin: "0 0 8px" }}>
                   Choose what Gemini may read, per folder. Masking is always on.
                 </p>
 
-                {folders.map((folder) => (
-                  <div
-                    key={folder.id}
-                    className="row wrap"
-                    style={{ padding: "10px 0", gap: 12 }}
-                  >
-                    <Icon glyph="folder" size={16} />
-                    <span className="grow sm m">{folder.name}</span>
-                    <Seg
-                      options="Off|Ask|Allow"
-                      value={folder.value}
-                      onChange={(val) => updateFolderConsent(folder.id, val)}
-                      aria-label={`AI consent for ${folder.name}`}
-                    />
-                  </div>
-                ))}
+                {folders.length === 0 ? (
+                  <span className="sm muted" style={{ padding: "8px 0" }}>
+                    Create folders in Drive to set per-folder AI consent.
+                  </span>
+                ) : (
+                  folders.map((folder) => (
+                    <div
+                      key={folder.id}
+                      className="row wrap"
+                      style={{ padding: "10px 0", gap: 12 }}
+                    >
+                      <Icon glyph="folder" size={16} />
+                      <span className="grow sm m">{folder.name}</span>
+                      <Seg
+                        options="Off|Ask|Allow"
+                        value={consentToUi(folder.aiConsent)}
+                        onChange={(val) =>
+                          void updateFolderConsent(folder.id, folder.name, val)
+                        }
+                        aria-label={`AI consent for ${folder.name}`}
+                      />
+                    </div>
+                  ))
+                )}
               </section>
             ) : null}
 
@@ -276,40 +316,37 @@ export default function SettingsPage() {
                   label="Mass-change alerts"
                   sub="Email me when many files change at once"
                   on={massAlerts}
-                  onChange={(next) =>
-                    toggleSwitch(
-                      "Mass-change alerts",
-                      massAlerts,
-                      setMassAlerts,
-                      next
+                  onChange={(next) => {
+                    setMassAlerts(next)
+                    void patchSettings(
+                      { massAlerts: next } as never,
+                      `Mass-change alerts turned ${next ? "on" : "off"}`
                     )
-                  }
+                  }}
                 />
                 <Switch
                   label="Canary triggers"
                   sub="Push and email"
                   on={canaryAlerts}
-                  onChange={(next) =>
-                    toggleSwitch(
-                      "Canary triggers",
-                      canaryAlerts,
-                      setCanaryAlerts,
-                      next
+                  onChange={(next) => {
+                    setCanaryAlerts(next)
+                    void patchSettings(
+                      { canaryAlerts: next } as never,
+                      `Canary alerts turned ${next ? "on" : "off"}`
                     )
-                  }
+                  }}
                 />
                 <Switch
                   label="Weekly exposure summary"
                   sub="Every Monday"
                   on={weeklySummary}
-                  onChange={(next) =>
-                    toggleSwitch(
-                      "Weekly exposure summary",
-                      weeklySummary,
-                      setWeeklySummary,
-                      next
+                  onChange={(next) => {
+                    setWeeklySummary(next)
+                    void patchSettings(
+                      { weeklySummary: next } as never,
+                      `Weekly summary turned ${next ? "on" : "off"}`
                     )
-                  }
+                  }}
                 />
               </section>
             ) : null}
@@ -317,12 +354,68 @@ export default function SettingsPage() {
             {showAccount ? (
               <section id="account" className="glass card col" style={{ gap: 14 }}>
                 <div className="col" style={{ gap: 2 }}>
-                  <h2 className="h2">Account</h2>
+                  <h2 className="h2">Account & Quotas</h2>
                   <p className="p muted" style={{ margin: 0 }}>
-                    Identity and alert contact details for your Drive.
+                    Live storage, monthly download cap, and alert contact details.
                   </p>
                 </div>
-                <form className="col" style={{ gap: 14 }} onSubmit={handleSaveAccount}>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: 12,
+                  }}
+                >
+                  <div
+                    className="glass-soft col"
+                    style={{ borderRadius: 14, padding: 14, gap: 8 }}
+                  >
+                    <div className="row between xs muted">
+                      <span>Storage used</span>
+                      <span>
+                        {user
+                          ? `${formatBytes(user.bytesUsed)} / ${formatBytes(user.storageQuotaBytes)}`
+                          : "—"}
+                      </span>
+                    </div>
+                    <div className="bar">
+                      <i style={{ width: `${storagePct}%` }} />
+                    </div>
+                  </div>
+
+                  <div
+                    className="glass-soft col"
+                    style={{ borderRadius: 14, padding: 14, gap: 8 }}
+                  >
+                    <div className="row between xs muted">
+                      <span>Downloads ({usage?.month ?? "month"})</span>
+                      <span>
+                        {usage
+                          ? `${formatBytes(usage.downloadBytes)} / ${formatBytes(usage.downloadCapBytes)}`
+                          : "—"}
+                      </span>
+                    </div>
+                    <div className="bar acc">
+                      <i style={{ width: `${downloadPct}%` }} />
+                    </div>
+                  </div>
+                </div>
+
+                <form
+                  className="col"
+                  style={{ gap: 14 }}
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    void patchSettings(
+                      {
+                        name: displayName.trim() || "Glashus User",
+                        alertEmail: alertEmail.trim(),
+                      } as never,
+                      "Account details saved"
+                    )
+                  }}
+                >
                   <div
                     style={{
                       display: "grid",
@@ -350,10 +443,11 @@ export default function SettingsPage() {
                   <div className="row" style={{ justifyContent: "flex-end" }}>
                     <Button
                       type="submit"
-                      label="Save account"
+                      label={saving ? "Saving…" : "Save account"}
                       variant="secondary"
                       size="sm"
                       icon="check"
+                      disabled={saving}
                     />
                   </div>
                 </form>
@@ -372,16 +466,32 @@ export default function SettingsPage() {
                   label="Require PIN on public links"
                   sub="Adds a 4-digit PIN by default when creating new links"
                   on={requirePinOnPublic}
-                  onChange={(next) =>
-                    toggleSwitch(
-                      "Require PIN on public links",
-                      requirePinOnPublic,
-                      setRequirePinOnPublic,
-                      next
+                  onChange={(next) => {
+                    setRequirePinOnPublic(next)
+                    void patchSettings(
+                      { requirePinOnPublic: next } as never,
+                      `Default public PIN turned ${next ? "on" : "off"}`
                     )
-                  }
+                  }}
                 />
-                <form className="col" style={{ gap: 14 }} onSubmit={handleSaveSecurity}>
+                <form
+                  className="col"
+                  style={{ gap: 14 }}
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    const parsed = Number.parseInt(defaultExpiryDays, 10)
+                    const safeDays =
+                      Number.isFinite(parsed) && parsed > 0 ? parsed : 7
+                    setDefaultExpiryDays(String(safeDays))
+                    void patchSettings(
+                      {
+                        defaultExpiryDays: safeDays,
+                        vaultHint: vaultHint.trim(),
+                      } as never,
+                      `Security defaults saved (${safeDays} days)`
+                    )
+                  }}
+                >
                   <div
                     style={{
                       display: "grid",
@@ -408,10 +518,11 @@ export default function SettingsPage() {
                   <div className="row" style={{ justifyContent: "flex-end" }}>
                     <Button
                       type="submit"
-                      label="Update security"
+                      label={saving ? "Saving…" : "Update security"}
                       variant="secondary"
                       size="sm"
                       icon="shield"
+                      disabled={saving}
                     />
                   </div>
                 </form>
@@ -427,7 +538,7 @@ export default function SettingsPage() {
                 <div className="col" style={{ gap: 2 }}>
                   <h2 className="h2">Your data</h2>
                   <span className="sm muted">
-                    Download everything as a ZIP, or delete your account.
+                    Download your metadata snapshot or sign out of this device.
                   </span>
                 </div>
                 <div className="row wrap">
@@ -436,18 +547,16 @@ export default function SettingsPage() {
                     variant="secondary"
                     size="md"
                     icon="download"
-                    onClick={() =>
-                      showToast("Preparing your encrypted Drive archive…")
-                    }
+                    onClick={() => void handleExportAll()}
                   />
                   <Button
-                    label="Delete account"
+                    label="Sign out"
                     variant="danger"
                     size="md"
-                    icon="trash"
-                    onClick={() => {
-                      setDeleteConfirmText("")
-                      setDeleteOpen(true)
+                    icon="logout"
+                    onClick={async () => {
+                      await signOutUser()
+                      router.replace("/auth")
                     }}
                   />
                 </div>
@@ -468,104 +577,9 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {deleteOpen ? (
-          <div
-            className="scrim"
-            onClick={() => {
-              setDeleteOpen(false)
-              setDeleteConfirmText("")
-            }}
-          >
-            <form
-              className="glass modal col"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="delete-account-title"
-              onClick={(e) => e.stopPropagation()}
-              onSubmit={(e) => {
-                e.preventDefault()
-                if (deleteConfirmText.trim().toUpperCase() !== "DELETE") return
-                setDeleteOpen(false)
-                setDeleteConfirmText("")
-                showToast(
-                  "Account deletion scheduled (30-day grace period)",
-                  () => {
-                    setToast(null)
-                  }
-                )
-              }}
-              style={{
-                width: 460,
-                maxWidth: "100%",
-                borderRadius: 24,
-                padding: 24,
-                gap: 16,
-                background: "rgba(255,255,255,0.84)",
-              }}
-            >
-              <div className="row between">
-                <h2 id="delete-account-title" className="h2">
-                  Delete account?
-                </h2>
-                <Button
-                  label="Close"
-                  variant="ghost"
-                  size="sm"
-                  icon="x"
-                  iconOnly
-                  onClick={() => {
-                    setDeleteOpen(false)
-                    setDeleteConfirmText("")
-                  }}
-                />
-              </div>
-              <p className="p">
-                Deleting your account destroys your wrapped Cloud KMS data key,
-                making every stored chunk unreadable after the 30-day grace
-                period.
-              </p>
-              <Field
-                label="Type DELETE to confirm"
-                placeholder="DELETE"
-                value={deleteConfirmText}
-                onChange={(e) => setDeleteConfirmText(e.target.value)}
-              />
-              <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
-                <Button
-                  label="Cancel"
-                  variant="ghost"
-                  size="md"
-                  onClick={() => {
-                    setDeleteOpen(false)
-                    setDeleteConfirmText("")
-                  }}
-                />
-                <Button
-                  type="submit"
-                  label="Schedule deletion"
-                  variant="danger"
-                  size="md"
-                  icon="trash"
-                  disabled={deleteConfirmText.trim().toUpperCase() !== "DELETE"}
-                />
-              </div>
-            </form>
-          </div>
-        ) : null}
-
-        {toast ? (
+        {toastMsg ? (
           <div role="status" aria-live="polite" className="toast">
-            <span>{toast.msg}</span>
-            {toast.undo ? (
-              <Button
-                label="Undo"
-                variant="secondary"
-                size="sm"
-                onClick={toast.undo}
-              />
-            ) : (
-              <span style={{ width: 8 }} />
-            )}
+            <span>{toastMsg}</span>
           </div>
         ) : null}
       </main>

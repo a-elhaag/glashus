@@ -6,6 +6,7 @@ const EnvSchema = z.object({
   GCS_QUARANTINE_BUCKET: z.string().min(1),
   GCS_CLEAN_BUCKET: z.string().min(1),
   KMS_KEY_NAME: z.string().min(1),
+  GCS_SIGNER_EMAIL: z.string().email().optional(),
   CORS_ORIGIN: z.string().default("http://localhost:3000"),
 })
 

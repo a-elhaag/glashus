@@ -609,6 +609,10 @@
     color: #6B6B6B;
   }
 
+  .input:is(:user-invalid, [aria-invalid="true"]) {
+    border-color: var(--accent);
+  }
+
   .bar {
     height: 6px;
     border-radius: 6px;
